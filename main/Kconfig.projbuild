@@ -1,0 +1,39 @@
+menu "vseismo"
+
+    config SEISMO_AP_SSID_PREFIX
+        string "Provisioning AP SSID prefix"
+        default "VSEISMO-"
+        help
+            The open provisioning AP is named PREFIX plus the last two bytes
+            of the SoftAP MAC in hex.
+
+    config SEISMO_NTP_SERVER_1
+        string "NTP server 1"
+        default "0.pool.ntp.org"
+
+    config SEISMO_NTP_SERVER_2
+        string "NTP server 2"
+        default "1.pool.ntp.org"
+
+    config SEISMO_NTP_SERVER_3
+        string "NTP server 3"
+        default "2.pool.ntp.org"
+
+    config SEISMO_NTP_SERVER_4
+        string "NTP server 4"
+        default "time.nist.gov"
+        help
+            Do not mix leap-smearing servers (Google, some cloud providers)
+            with standard ones. Sample timestamps would jump around a leap
+            second.
+
+    config SEISMO_OTA_VERIFY_S
+        int "OTA self-test deadline (seconds)"
+        range 60 1800
+        default 300
+        help
+            A freshly flashed image must reach WiFi with the web server up
+            and no controller fault within this time, or it rolls back. A
+            missing ADC does not block it, so a bare DevKit can be updated.
+
+endmenu

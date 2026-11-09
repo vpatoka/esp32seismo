@@ -1,0 +1,41 @@
+# vseismo - ESP32-C5-DevKitC-1-N8R8, ESP-IDF v6.1
+CONFIG_IDF_TARGET="esp32c5"
+
+# Flash and partitions
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# OTA rollback: a fresh image must mark itself valid after the self-test
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# Console on the built-in USB Serial/JTAG (GPIO13/14). UART0 (GPIO11/12, the
+# DevKit's USB-to-UART port) stays free for the WinSDR / PSN data stream.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+# 1 ms tick so bounded waits and timeouts have real resolution
+CONFIG_FREERTOS_HZ=1000
+
+# Task watchdog. Idle monitoring on; the acquisition task subscribes explicitly.
+CONFIG_ESP_TASK_WDT_EN=y
+CONFIG_ESP_TASK_WDT_INIT=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=5
+CONFIG_ESP_TASK_WDT_PANIC=y
+
+# Core dump to flash for post-mortem
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+
+# SNTP: several servers, hourly poll, short random startup delay
+CONFIG_LWIP_SNTP_MAX_SERVERS=4
+CONFIG_LWIP_SNTP_UPDATE_DELAY=3600000
+CONFIG_LWIP_SNTP_STARTUP_DELAY=y
+CONFIG_LWIP_SNTP_MAXIMUM_STARTUP_DELAY=5000
+
+# HTTP: captive-portal probes from phones carry long headers
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+CONFIG_HTTPD_MAX_URI_LEN=512
+
+# DRDY and 1 Hz ISRs run from IRAM; keep the GPIO ISR path there too
+CONFIG_GPIO_CTRL_FUNC_IN_IRAM=y

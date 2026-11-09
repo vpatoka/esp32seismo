@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VSEISMO WiFi Setup</title>
+<style>
+:root { --bg:#17120c; --panel:#241b12; --edge:#5a4026; --brass:#c9973f; --ink:#f1e3c8; --dim:#b39c7a; --ok:#7fbf6a; --err:#e0674a; }
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:Georgia,"Times New Roman",serif; background:var(--bg); color:var(--ink); min-height:100vh; padding:16px; }
+.box { max-width:420px; margin:12px auto; background:var(--panel); border:2px solid var(--edge); border-radius:10px; padding:20px; }
+h1 { font-size:20px; letter-spacing:3px; text-align:center; color:var(--brass); margin-bottom:4px; }
+.sub { text-align:center; color:var(--dim); font-size:13px; margin-bottom:16px; }
+.status { text-align:center; min-height:20px; margin-bottom:14px; color:var(--dim); }
+.status.ok { color:var(--ok); } .status.err { color:var(--err); }
+button { width:100%; padding:12px; border-radius:6px; font:inherit; font-size:15px; cursor:pointer; margin-bottom:10px; border:1px solid var(--edge); }
+.pri { background:var(--brass); color:#1b130a; border-color:var(--brass); }
+.sec { background:transparent; color:var(--ink); }
+label { display:block; font-size:13px; color:var(--dim); margin-bottom:6px; }
+input { width:100%; padding:11px; border-radius:6px; border:1px solid var(--edge); background:#120d08; color:var(--ink); font:inherit; margin-bottom:14px; }
+input:focus { outline:none; border-color:var(--brass); }
+.hidden { display:none; }
+.nets { max-height:280px; overflow-y:auto; margin-bottom:12px; }
+.net { display:flex; justify-content:space-between; align-items:center; padding:11px 8px; border-bottom:1px solid #33261a; cursor:pointer; }
+.net:hover { background:#2e2217; }
+.meta { font-size:12px; color:var(--dim); white-space:nowrap; margin-left:8px; }
+.spin { width:28px; height:28px; border:3px solid var(--edge); border-top-color:var(--brass); border-radius:50%; animation:s 1s linear infinite; margin:14px auto; }
+@keyframes s { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>VSEISMO</h1>
+  <div class="sub">Connect the seismograph to your WiFi</div>
+  <div id="status" class="status">Choose a network</div>
+
+  <div id="menu">
+    <button class="pri" onclick="scan()">Scan networks</button>
+    <button class="sec" onclick="manual()">Enter name manually</button>
+  </div>
+
+  <div id="scanv" class="hidden">
+    <div id="spin" class="spin"></div>
+    <div id="nets" class="nets"></div>
+    <button class="pri" onclick="scan()">Scan again</button>
+    <button class="sec" onclick="show('menu')">Back</button>
+  </div>
+
+  <div id="formv" class="hidden">
+    <label for="ssid">Network name (SSID)</label>
+    <input id="ssid" maxlength="32" autocapitalize="none" autocorrect="off">
+    <label for="pass">Password (leave empty for an open network)</label>
+    <input id="pass" type="password" maxlength="63">
+    <button class="pri" onclick="connect()">Save and connect</button>
+    <button class="sec" onclick="show('menu')">Back</button>
+  </div>
+
+  <div id="busy" class="hidden"><div class="spin"></div></div>
+</div>
+
+<script>
+function $(id) { return document.getElementById(id); }
+function show(v) {
+  ['menu', 'scanv', 'formv', 'busy'].forEach(function (x) { $(x).className = x === v ? '' : 'hidden'; });
+}
+function status(msg, cls) { $('status').textContent = msg; $('status').className = 'status' + (cls ? ' ' + cls : ''); }
+function manual() { show('formv'); $('pass').value = ''; status('Type the network name and password'); }
+function pick(ssid) { $('ssid').value = ssid; $('pass').value = ''; show('formv'); status('Password for ' + ssid); }
+
+function scan() {
+  show('scanv'); $('spin').style.display = 'block'; $('nets').textContent = ''; status('Scanning 2.4 and 5 GHz...');
+  var x = new XMLHttpRequest();
+  x.open('GET', '/api/wifi/scan?_t=' + Date.now(), true);
+  x.timeout = 20000;
+  x.onload = function () {
+    $('spin').style.display = 'none';
+    var d; try { d = JSON.parse(x.responseText); } catch (e) { status('Bad reply from the station', 'err'); return; }
+    if (!d.ok || !d.networks || !d.networks.length) { status(d.error || 'No networks found', 'err'); return; }
+    d.networks.sort(function (a, b) { return b.rssi - a.rssi; });
+    var seen = {};
+    d.networks.forEach(function (n) {
+      if (seen[n.ssid]) return; seen[n.ssid] = 1;
+      var row = document.createElement('div'); row.className = 'net';
+      var name = document.createElement('span'); name.textContent = n.ssid;
+      var meta = document.createElement('span'); meta.className = 'meta';
+      meta.textContent = (n.ch > 14 ? '5 GHz' : '2.4 GHz') + '  ' + n.rssi + ' dBm' + (n.auth ? '' : '  open');
+      row.appendChild(name); row.appendChild(meta);
+      row.onclick = function () { pick(n.ssid); };
+      $('nets').appendChild(row);
+    });
+    status('Tap your network');
+  };
+  x.onerror = x.ontimeout = function () { $('spin').style.display = 'none'; status('Scan failed, try again', 'err'); };
+  x.send();
+}
+
+function connect() {
+  var ssid = $('ssid').value, pass = $('pass').value;
+  if (!ssid) { status('Network name is required', 'err'); return; }
+  if (pass && pass.length < 8) { status('WPA passwords are at least 8 characters', 'err'); return; }
+  show('busy'); status('Saving...');
+  var x = new XMLHttpRequest();
+  x.open('POST', '/api/wifi/connect', true);
+  x.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+  x.timeout = 10000;
+  x.onload = function () {
+    var d; try { d = JSON.parse(x.responseText); } catch (e) { d = { ok: true }; }
+    if (d.ok) status('Saved. The station restarts and joins ' + ssid + '. You can close this page.', 'ok');
+    else { show('formv'); status(d.error || 'Save failed', 'err'); }
+  };
+  x.onerror = x.ontimeout = function () { status('The station is restarting. You can close this page.', 'ok'); };
+  x.send('ssid=' + encodeURIComponent(ssid) + '&password=' + encodeURIComponent(pass));
+}
+</script>
+</body>
+</html>

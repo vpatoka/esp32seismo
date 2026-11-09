@@ -1,0 +1,35 @@
+# vseismo - project tuning on top of sdkconfig.defaults
+# Picked up by the top-level CMakeLists.txt when present. After editing,
+# regenerate: rm sdkconfig && idf.py build
+
+# Release-grade code for the acquisition path. Comment out for JTAG (-Og).
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# Catch stack smashing in the HTTP/JSON parsing and portal paths
+CONFIG_COMPILER_STACK_CHECK_MODE_STRONG=y
+
+# WiFi handler runs on the event task: banner logging, SNTP start, OTA self-test
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
+
+# SNTP callbacks run on the tcpip thread and log with formatting
+CONFIG_LWIP_TCPIP_TASK_STACK_SIZE=4096
+
+# Reuse the last DHCP lease from NVS: faster reconnect, stable IP after power loss
+CONFIG_LWIP_DHCP_RESTORE_LAST_IP=y
+
+# Log lines carry wall-clock time (UTC) instead of ms since boot
+CONFIG_LOG_TIMESTAMP_SOURCE_SYSTEM=y
+
+# Bootloader has little flash headroom; warnings only, rollback errors still print
+CONFIG_BOOTLOADER_LOG_LEVEL_WARN=y
+
+# Per-task stack high-water marks
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+
+# Keep ESP_LOGD compiled in; the default stays INFO. Raise a tag at runtime
+# with POST /api/loglevel (resets on reboot).
+CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y
+
+# Dual stack: SLAAC global address, DNS servers from Router Advertisements
+CONFIG_LWIP_IPV6_AUTOCONFIG=y
+CONFIG_LWIP_IPV6_RDNSS_MAX_DNS_SERVERS=2

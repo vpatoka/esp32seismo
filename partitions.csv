@@ -1,0 +1,23 @@
+# vseismo partition table (8 MB flash, ESP32-C5-WROOM-1 N8R8) - dual-slot OTA.
+#
+# Two app slots (ota_0/ota_1) plus otadata so firmware updates over the air from
+# the web UI. The esp_ota_* writer always targets the slot that is NOT running.
+# With bootloader rollback enabled, a new image boots in PENDING_VERIFY and must
+# pass the self-test in vseismo.c, or the next reset returns to the old slot.
+#
+# Size math:
+#   Flash         8 MB      = 0x800000
+#   ota_0/ota_1   0x300000  = 3 MB each
+#   coredump      0x10000   = 64 KB (post-mortem after a panic or watchdog)
+#   Free tail     0x630000..0x800000 = ~1.8 MB, kept for a future data partition
+#
+# The layout itself cannot change over the air. Adopting or changing this table
+# needs one USB flash; every update after that can go through the web UI.
+#
+# Name,     Type, SubType,  Offset,   Size
+nvs,        data, nvs,      0x9000,   0x6000
+otadata,    data, ota,      0xf000,   0x2000
+phy_init,   data, phy,      0x11000,  0x1000
+ota_0,      app,  ota_0,    0x20000,  0x300000
+ota_1,      app,  ota_1,    0x320000, 0x300000
+coredump,   data, coredump, 0x620000, 0x10000

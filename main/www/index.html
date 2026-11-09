@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vseismo</title>
+<style>
+:root{
+  --page:#EEF2F0;--paper:#FCFDFB;--grid:#D6E3DC;--grid2:#B5CBBF;
+  --ink0:#1E3A8A;--ink1:#B42318;--text:#1D2A26;--muted:#5B6B66;
+  --line:#CBD6D0;--field:#FFFFFF;--ok:#2F7D4F;--warn:#9A6A12;--bad:#B42318;
+  --focus:#1E3A8A;
+}
+@media (prefers-color-scheme:dark){
+  :root{--page:#1A2026;--paper:#20282E;--grid:#2D3A3F;--grid2:#3B4B51;
+    --ink0:#8FB3FF;--ink1:#FF8A7A;--text:#E4ECE8;--muted:#9AABA4;
+    --line:#34424A;--field:#232C33;--ok:#6BC28E;--warn:#E0B054;--bad:#FF8A7A;--focus:#8FB3FF}
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--page);color:var(--text);
+  font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-variant-numeric:tabular-nums}
+main{max-width:1120px;margin:0 auto;padding:20px 16px 48px}
+a{color:var(--ink0)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 24px}
+h1{margin:0;font-size:2.3rem;line-height:1.1;font-weight:680;letter-spacing:.01em}
+#utc{font-size:1.25rem;font-weight:560}
+.sub{color:var(--muted);margin:2px 0 0;font-size:.9rem}
+
+.strip{display:flex;flex-wrap:wrap;gap:6px 22px;margin:16px 0 14px;padding:0;list-style:none}
+.strip li{display:flex;align-items:center;gap:7px;font-size:.92rem}
+.strip b{font-weight:600}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:none}
+.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}
+
+.drum{background:var(--paper);border:1px solid var(--line);border-radius:3px;position:relative}
+.drum canvas{display:block;width:100%;height:340px}
+.drumbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;margin:8px 0 18px;font-size:.9rem;color:var(--muted)}
+.drumbar label{display:flex;align-items:center;gap:6px}
+.key{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+
+.readouts{display:grid;grid-template-columns:1fr 1fr;gap:10px 32px;margin-bottom:20px}
+.ro h2{font-size:1.05rem;margin:0 0 4px;font-weight:620;display:flex;align-items:center;gap:8px}
+.ro table{border-collapse:collapse;width:100%;max-width:420px}
+.ro td{padding:2px 0;font-size:.93rem}
+.ro td:first-child{color:var(--muted);width:46%}
+.ro td:last-child{text-align:right}
+.big{font-size:1.6rem;font-weight:640;line-height:1.2}
+.big small{font-size:.9rem;font-weight:500;color:var(--muted)}
+
+.spec{background:var(--paper);border:1px solid var(--line);border-radius:3px}
+.spec canvas{display:block;width:100%;height:220px}
+.cap{font-size:.86rem;color:var(--muted);margin:6px 0 22px;max-width:80ch}
+
+details{border-top:1px solid var(--line);padding:2px 0}
+details:last-of-type{border-bottom:1px solid var(--line)}
+summary{cursor:pointer;padding:10px 0;font-weight:600;font-size:1.02rem}
+summary span{font-weight:400;color:var(--muted);font-size:.9rem;margin-left:8px}
+.panel{padding:4px 0 18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px 20px}
+.f{display:flex;flex-direction:column;gap:3px;font-size:.88rem}
+.f span{color:var(--muted)}
+.f em{font-style:normal;color:var(--muted);font-size:.8rem}
+input,select{font:inherit;font-size:.95rem;color:var(--text);background:var(--field);
+  border:1px solid var(--line);border-radius:4px;padding:6px 8px;min-width:0}
+input[type=checkbox]{width:18px;height:18px;padding:0}
+.chcols{display:grid;grid-template-columns:1fr 1fr;gap:16px 32px}
+.chcols h3{margin:0 0 8px;font-size:.98rem;display:flex;align-items:center}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:14px}
+button{font:inherit;font-size:.93rem;padding:7px 14px;border-radius:4px;cursor:pointer;
+  border:1px solid var(--line);background:var(--field);color:var(--text)}
+button.primary{background:var(--ink0);border-color:var(--ink0);color:var(--paper)}
+button:disabled{opacity:.55;cursor:default}
+.msg{font-size:.9rem;min-height:1.4em}
+.msg.ok{color:var(--ok)}.msg.bad{color:var(--bad)}
+pre{white-space:pre-wrap;word-break:break-word;font-size:.8rem;line-height:1.45;max-height:340px;overflow:auto;
+  background:var(--paper);border:1px solid var(--line);border-radius:3px;padding:10px;margin:0}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:3px 16px;font-size:.92rem}
+.kv dt{color:var(--muted)}.kv dd{margin:0}
+.api{margin-top:26px;font-size:.88rem;color:var(--muted);max-width:80ch}
+.api code{color:var(--text)}
+progress{width:220px;height:10px}
+
+@media (max-width:720px){
+  h1{font-size:1.8rem}
+  .readouts,.chcols{grid-template-columns:1fr}
+  .drum canvas{height:280px}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div>
+    <h1 id="code">vseismo</h1>
+    <p class="sub" id="sub">Two-channel geophone digitizer</p>
+  </div>
+  <div id="utc" aria-live="off">--:--:-- UTC</div>
+</header>
+
+<ul class="strip" id="strip" aria-label="Station status">
+  <li><i class="dot" id="d-adc"></i>ADC <b id="s-adc">waiting</b></li>
+  <li><i class="dot" id="d-time"></i>Time <b id="s-time">waiting</b></li>
+  <li><i class="dot" id="d-ref"></i>1 Hz reference <b id="s-ref">waiting</b></li>
+  <li><i class="dot" id="d-wifi"></i>WiFi <b id="s-wifi">waiting</b></li>
+  <li><i class="dot" id="d-flt"></i>Faults <b id="s-flt">waiting</b></li>
+</ul>
+
+<div class="drum"><canvas id="drum" aria-label="Live waveform, both channels"></canvas></div>
+<div class="drumbar">
+  <span><i class="key" style="background:var(--ink0)"></i><span id="k0">Z</span></span>
+  <span><i class="key" style="background:var(--ink1)"></i><span id="k1">H</span></span>
+  <label>Window <select id="win"><option>15</option><option>30</option><option selected>60</option><option>120</option></select> s</label>
+  <label>Scale <select id="scale">
+    <option value="auto" selected>auto per channel</option>
+    <option value="100">&plusmn;100 counts</option><option value="1000">&plusmn;1 000</option>
+    <option value="10000">&plusmn;10 000</option><option value="100000">&plusmn;100 000</option>
+    <option value="1000000">&plusmn;1 000 000</option><option value="8388607">full scale</option></select></label>
+  <label><input type="checkbox" id="demean" checked> remove offset</label>
+  <label><input type="checkbox" id="pause"> freeze</label>
+  <span id="rate"></span>
+</div>
+
+<section class="readouts" aria-label="Channel readouts">
+  <div class="ro" id="ro0"></div>
+  <div class="ro" id="ro1"></div>
+</section>
+
+<div class="spec"><canvas id="spec" aria-label="Noise spectrum, both channels"></canvas></div>
+<p class="cap" id="speccap">Power spectral density of the last stretch of data, Hann window. With the inputs shorted this is the ADC floor; with the amplifier connected it is the station floor.</p>
+
+<details id="p-acq">
+  <summary>Acquisition<span id="acqsum"></span></summary>
+  <div class="panel">
+    <div class="grid">
+      <label class="f"><span>ADC clock source</span>
+        <select name="clk_src"><option value="ext">External oscillator on CLKIN</option>
+        <option value="ledc">ESP32 LEDC on GPIO7</option><option value="ltc6903">On-board LTC6903 (stock Click)</option></select></label>
+      <label class="f"><span>CLKIN frequency, Hz</span><input name="clk_hz" inputmode="numeric"><em>8192000 for an 8.192 MHz oscillator</em></label>
+      <label class="f"><span>Oversampling ratio</span><select name="osr">
+        <option>128</option><option>256</option><option>512</option><option>1024</option><option>2048</option>
+        <option>4096</option><option>8192</option><option>16256</option></select><em>Input rate = CLKIN / 2 / OSR</em></label>
+      <label class="f"><span>Decimation</span><select name="decim">
+        <option>1</option><option>2</option><option>4</option><option>5</option><option>10</option><option>20</option></select><em>Output rate = input rate / decimation</em></label>
+      <label class="f"><span>FIR taps</span><input name="taps" inputmode="numeric"><em>0 picks 20 x decimation + 1</em></label>
+      <label class="f"><span>Station code</span><input name="station" maxlength="5" autocapitalize="characters"></label>
+      <label class="f"><span>Network code</span><input name="network" maxlength="2" autocapitalize="characters"><em>XX is the code for unregistered stations</em></label>
+    </div>
+    <div class="row"><button class="primary" data-save="p-acq">Save acquisition settings</button><span class="msg" data-msg="p-acq"></span></div>
+  </div>
+</details>
+
+<details id="p-ch">
+  <summary>Channels<span>gain, calibration and sensor scale</span></summary>
+  <div class="panel">
+    <div class="chcols" id="chcols"></div>
+    <p class="cap">The ADC gain trim multiplies the result, and the offset trim is subtracted from it. Velocity readouts need both the amplifier gain and the geophone sensitivity. Leave either at 0 to hide them.</p>
+    <div class="row"><button class="primary" data-save="p-ch">Save channel settings</button><span class="msg" data-msg="p-ch"></span></div>
+  </div>
+</details>
+
+<details id="p-time">
+  <summary>Timing<span id="timesum"></span></summary>
+  <div class="panel">
+    <div class="grid">
+      <label class="f"><span>1 Hz reference on GPIO23</span><select name="ref">
+        <option value="none">None</option><option value="gps">GPS PPS</option><option value="rtc">DS3231 SQW</option></select></label>
+      <label class="f"><span>Reference edge</span><select name="ref_edge"><option value="rise">Rising</option><option value="fall">Falling</option></select></label>
+      <label class="f"><span>DS3231 holdover clock fitted</span><input type="checkbox" name="rtc"></label>
+    </div>
+    <dl class="kv" id="timekv" style="margin-top:14px"></dl>
+    <div class="row"><button class="primary" data-save="p-time">Save timing settings</button><span class="msg" data-msg="p-time"></span></div>
+  </div>
+</details>
+
+<details id="p-bench">
+  <summary>Bench tests<span>input switching, offset zero, filter sync</span></summary>
+  <div class="panel">
+    <div class="chcols" id="benchcols"></div>
+    <div class="row">
+      <button data-cmd="sync">Sync both channel filters</button>
+      <button data-cmd="restart">Restart acquisition</button>
+      <span class="msg" id="benchmsg"></span>
+    </div>
+    <p class="cap">Input switching is not saved. Restarting acquisition or rebooting puts both channels back on their inputs.</p>
+  </div>
+</details>
+
+<details id="p-net">
+  <summary>Network and firmware<span id="fwsum"></span></summary>
+  <div class="panel">
+    <dl class="kv" id="netkv"></dl>
+    <div class="grid" style="margin-top:14px">
+      <label class="f"><span>Hostname</span><input name="hostname"></label>
+      <label class="f"><span>HTTP port</span><input name="port" inputmode="numeric"></label>
+      <label class="f"><span>Require login</span><input type="checkbox" name="login"></label>
+      <label class="f"><span>User</span><input name="user" autocomplete="username"></label>
+      <label class="f"><span>New password</span><input name="pass" type="password" autocomplete="new-password"><em>Leave empty to keep the current one</em></label>
+    </div>
+    <div class="row"><button class="primary" data-save="p-net">Save network settings</button>
+      <a href="/portal">Change WiFi network</a><span class="msg" data-msg="p-net"></span></div>
+    <div class="row">
+      <label class="f"><span>Firmware file (vseismo.bin)</span><input type="file" id="fwfile" accept=".bin"></label>
+      <button id="fwbtn">Install firmware</button><progress id="fwprog" max="100" value="0" hidden></progress>
+      <span class="msg" id="fwmsg"></span>
+    </div>
+    <div class="row">
+      <a href="/api/config/export">Download settings file</a>
+      <button id="reboot">Reboot station</button>
+    </div>
+  </div>
+</details>
+
+<details id="p-log">
+  <summary>Log<span>recent console lines</span></summary>
+  <div class="panel"><pre id="log">Open to load.</pre>
+    <div class="row"><button id="logbtn">Refresh log</button></div></div>
+</details>
+
+<p class="api">Everything on this page goes through the station's HTTP API, so it also works from a terminal:
+<code>curl http://vseismo/api/status</code>, <code>/api/acq</code>, <code>/api/wave?since=0</code>,
+<code>curl -d osr=4096 -d decim=10 http://vseismo/api/config</code>.
+Raw readings: <a href="/api/status">status</a>, <a href="/api/acq">acquisition</a>, <a href="/api/config">settings</a>.
+The USB console offers the same: type <code>help</code>.</p>
+<noscript><p class="api">Scripts are off, so this page cannot draw the trace or save settings. Use the links above or curl.</p></noscript>
+</main>
+
+<script>
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id);};
+var FAULTS={0:'abnormal reset',1:'I2C init',2:'task init',7:'ADC not found',8:'RTC not answering',
+  9:'RTC lost power',10:'I2C bus recovered',11:'1 Hz reference lost',12:'ADC CRC errors',
+  13:'late ADC reads',14:'clipping',15:'no wall-clock time'};
+var S={next:0,expect:null,fs:100,buf:[[],[]],lastT:0,cfg:null,acq:null,status:null,dirty:true};
+var MAXSEC=120;
+
+function xhr(method,url,body,cb,ctype){
+  var x=new XMLHttpRequest();
+  x.open(method,url,true);
+  x.timeout=method==='GET'?5000:120000;
+  if(body!=null&&ctype)x.setRequestHeader('Content-Type',ctype);
+  x.onload=function(){var d=null;try{d=JSON.parse(x.responseText);}catch(e){}
+    cb(x.status===200&&d?null:(d&&d.error)||('HTTP '+x.status),d);};
+  x.onerror=x.ontimeout=function(){cb('no reply from the station',null);};
+  x.send(body);
+  return x;
+}
+function form(o){var a=[];for(var k in o)a.push(encodeURIComponent(k)+'='+encodeURIComponent(o[k]));return a.join('&');}
+function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+function fmt(v,d){return v==null||isNaN(v)?'n/a':Number(v).toFixed(d);}
+function grp(n){return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,' ');}
+function setDot(id,cls){$(id).className='dot '+(cls||'');}
+function msg(el,text,ok){el.textContent=text;el.className='msg '+(ok?'ok':'bad');}
+function pad(n){return (n<10?'0':'')+n;}
+function utcStr(ms,withDate){var d=new Date(ms);
+  var t=pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds());
+  return withDate?d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())+' '+t:t;}
+
+/* ── canvases ─────────────────────────────────────────────────────────── */
+function fit(c){var r=c.getBoundingClientRect(),p=window.devicePixelRatio||1;
+  var w=Math.round(r.width*p),h=Math.round(r.height*p);
+  if(c.width!==w||c.height!==h){c.width=w;c.height=h;}
+  var g=c.getContext('2d');g.setTransform(p,0,0,p,0,0);return {g:g,w:r.width,h:r.height};}
+
+function drawDrum(){
+  var c=fit($('drum')),g=c.g,W=c.w,H=c.h;
+  var win=+$('win').value,fs=S.fs||100,N=Math.max(2,Math.round(win*fs));
+  g.fillStyle=css('--paper');g.fillRect(0,0,W,H);
+  var lanes=2,lh=H/lanes,px=W/(N-1);
+  // second lines, then 10 s lines aligned to UTC when time is known
+  g.lineWidth=1;
+  var step=win>60?5:1;
+  for(var s=0;s<=win;s+=step){var x=W-s*fs*px;g.strokeStyle=css('--grid');
+    g.beginPath();g.moveTo(Math.round(x)+.5,0);g.lineTo(Math.round(x)+.5,H);g.stroke();}
+  g.font='11px system-ui,sans-serif';g.fillStyle=css('--muted');
+  var major=win>=60?10000:5000;
+  if(S.lastT){var t=Math.floor(S.lastT/major)*major;
+    for(;S.lastT-t<=win*1000;t-=major){var x2=W-(S.lastT-t)/1000*fs*px;
+      g.strokeStyle=css('--grid2');g.beginPath();g.moveTo(Math.round(x2)+.5,0);g.lineTo(Math.round(x2)+.5,H);g.stroke();
+      if(x2>40)g.fillText(utcStr(t),x2+4,H-6);}}
+  for(var L=1;L<lanes;L++){g.strokeStyle=css('--grid2');g.beginPath();g.moveTo(0,L*lh+.5);g.lineTo(W,L*lh+.5);g.stroke();}
+
+  var names=S.cfg?S.cfg.ch.map(function(c){return c.name;}):['Z','H'];
+  for(var ch=0;ch<2;ch++){
+    var b=S.buf[ch],n=Math.min(b.length,N),o=b.length-n,mean=0,cnt=0,i;
+    for(i=o;i<b.length;i++)if(!isNaN(b[i])){mean+=b[i];cnt++;}
+    mean=cnt&&$('demean').checked?mean/cnt:0;
+    var sc=$('scale').value,amp;
+    if(sc==='auto'){amp=10;for(i=o;i<b.length;i++)if(!isNaN(b[i]))amp=Math.max(amp,Math.abs(b[i]-mean));amp*=1.15;}
+    else amp=+sc;
+    var mid=ch*lh+lh/2,k=(lh/2-6)/amp,ink=css(ch?'--ink1':'--ink0');
+    g.strokeStyle=css('--grid');g.beginPath();g.moveTo(0,mid+.5);g.lineTo(W,mid+.5);g.stroke();
+    g.strokeStyle=ink;g.lineWidth=1.3;g.lineJoin='round';g.beginPath();
+    var pen=false,lx=0,ly=mid;
+    for(i=0;i<n;i++){var v=b[o+i];var x3=W-(n-1-i)*px;
+      if(isNaN(v)){pen=false;continue;}
+      var y=mid-(v-mean)*k;y=Math.max(ch*lh+1,Math.min((ch+1)*lh-1,y));
+      if(pen)g.lineTo(x3,y);else g.moveTo(x3,y);pen=true;lx=x3;ly=y;}
+    g.stroke();
+    if(n){g.fillStyle=ink;g.beginPath();g.arc(Math.min(lx,W-4),ly,3.2,0,6.2832);g.fill();}
+    g.fillStyle=ink;g.font='600 13px system-ui,sans-serif';g.fillText(names[ch]||('CH'+ch),8,ch*lh+18);
+    g.fillStyle=css('--muted');g.font='11px system-ui,sans-serif';
+    var lsb=S.acq&&S.acq.ch[ch]?S.acq.ch[ch].lsb_uv:0;
+    var lab='±'+grp(amp)+' counts'+(lsb?'  ('+fmtV(amp*lsb)+' at ADC)':'');
+    g.fillText(lab,8,ch*lh+33);
+  }
+  if(!S.buf[0].length){g.fillStyle=css('--muted');g.font='14px system-ui,sans-serif';
+    g.fillText('Waiting for samples. If this stays empty, check the ADC line above.',16,H/2+5);}
+}
+function fmtV(uv){return uv>=1e6?fmt(uv/1e6,3)+' V':uv>=1e3?fmt(uv/1e3,2)+' mV':fmt(uv,2)+' µV';}
+
+/* radix-2 FFT, in place */
+function fft(re,im){var n=re.length,i,j=0,k,l,t;
+  for(i=1;i<n;i++){var bit=n>>1;for(;j&bit;bit>>=1)j^=bit;j^=bit;
+    if(i<j){t=re[i];re[i]=re[j];re[j]=t;t=im[i];im[i]=im[j];im[j]=t;}}
+  for(l=2;l<=n;l<<=1){var a=-2*Math.PI/l,wr=Math.cos(a),wi=Math.sin(a);
+    for(i=0;i<n;i+=l){var cr=1,ci=0;for(k=0;k<l/2;k++){
+      var p=i+k,q=p+l/2,xr=re[q]*cr-im[q]*ci,xi=re[q]*ci+im[q]*cr;
+      re[q]=re[p]-xr;im[q]=im[p]-xi;re[p]+=xr;im[p]+=xi;t=cr*wr-ci*wi;ci=cr*wi+ci*wr;cr=t;}}}}
+
+function psd(b,fs){var len=b.length,n=64;while(n*2<=Math.min(len,4096))n*=2;if(len<64)return null;
+  var re=new Float64Array(n),im=new Float64Array(n),o=len-n,m=0,c=0,i,w2=0;
+  for(i=0;i<n;i++)if(!isNaN(b[o+i])){m+=b[o+i];c++;}m=c?m/c:0;
+  for(i=0;i<n;i++){var w=.5-.5*Math.cos(2*Math.PI*i/(n-1));w2+=w*w;var v=b[o+i];re[i]=(isNaN(v)?0:v-m)*w;}
+  fft(re,im);var out=[];for(i=1;i<n/2;i++)out.push([i*fs/n,2*(re[i]*re[i]+im[i]*im[i])/(fs*w2)]);return out;}
+
+function drawSpec(){
+  var c=fit($('spec')),g=c.g,W=c.w,H=c.h,fs=S.fs||100;
+  g.fillStyle=css('--paper');g.fillRect(0,0,W,H);
+  var P=[psd(S.buf[0],fs),psd(S.buf[1],fs)];
+  var useUv=S.acq&&S.acq.ch[0]&&S.acq.ch[1];
+  var lo=1e9,hi=-1e9,ser=[],ch,i;
+  for(ch=0;ch<2;ch++){if(!P[ch]){ser.push(null);continue;}
+    var lsb=useUv?S.acq.ch[ch].lsb_uv:1,s=[];
+    for(i=0;i<P[ch].length;i++){var db=10*Math.log10(P[ch][i][1]*lsb*lsb+1e-30);s.push([P[ch][i][0],db]);
+      if(db<lo)lo=db;if(db>hi)hi=db;}ser.push(s);}
+  var ml=46,mb=22,pw=W-ml-8,ph=H-mb-8;
+  var f0=Math.max(.05,fs/4096),f1=fs/2,lf0=Math.log10(f0),lf1=Math.log10(f1);
+  if(hi<lo){g.fillStyle=css('--muted');g.font='13px system-ui,sans-serif';
+    g.fillText('Spectrum appears after a few seconds of data.',ml+8,H/2);return;}
+  lo=Math.floor(lo/10)*10;hi=Math.ceil(hi/10)*10;if(hi-lo<20)hi=lo+20;
+  var X=function(f){return ml+(Math.log10(f)-lf0)/(lf1-lf0)*pw;},Y=function(d){return 8+(hi-d)/(hi-lo)*ph;};
+  g.font='11px system-ui,sans-serif';g.lineWidth=1;
+  [0.1,0.2,0.5,1,2,5,10,20,50,100,200,500].forEach(function(f){if(f<f0||f>f1)return;var x=Math.round(X(f))+.5;
+    g.strokeStyle=css(f===1||f===10||f===100?'--grid2':'--grid');g.beginPath();g.moveTo(x,8);g.lineTo(x,8+ph);g.stroke();
+    g.fillStyle=css('--muted');g.fillText(f+(f===1?' Hz':''),x-6,H-6);});
+  for(var d=lo;d<=hi;d+=10){var y=Math.round(Y(d))+.5;g.strokeStyle=css('--grid');
+    g.beginPath();g.moveTo(ml,y);g.lineTo(ml+pw,y);g.stroke();g.fillStyle=css('--muted');g.fillText(d,6,y+4);}
+  for(ch=0;ch<2;ch++){if(!ser[ch])continue;g.strokeStyle=css(ch?'--ink1':'--ink0');g.lineWidth=1.3;g.beginPath();
+    ser[ch].forEach(function(p,k){var x=X(p[0]),y=Y(p[1]);if(p[0]<f0)return;if(k===0)g.moveTo(x,y);else g.lineTo(x,y);});g.stroke();}
+  $('speccap').textContent='Power spectral density, dB re 1 '+(useUv?'µV²/Hz at the ADC pin':'count²/Hz')+
+    ', last '+Math.round(Math.min(S.buf[0].length,4096)/fs)+' s, Hann window. With the inputs shorted this is the ADC floor; with the amplifier connected it is the station floor.';
+}
+
+/* ── data ─────────────────────────────────────────────────────────────── */
+function poll(){
+  xhr('GET','/api/wave?since='+S.next+'&max=1000',null,function(err,d){
+    if(err||!d){setTimeout(poll,1500);return;}
+    if(d.n>0){
+      if(S.expect!==null&&d.seq0!==S.expect){S.buf[0].push(NaN);S.buf[1].push(NaN);}
+      for(var i=0;i<d.n;i++){S.buf[0].push(d.ch0[i]);S.buf[1].push(d.ch1[i]);}
+      S.expect=d.seq0+d.n;
+      if(d.fs>0)S.fs=d.fs;
+      if(d.t0)S.lastT=d.t0+(d.n-1)*1000/S.fs;
+      var cap=Math.round(MAXSEC*S.fs)+8;
+      for(var c=0;c<2;c++)if(S.buf[c].length>cap)S.buf[c].splice(0,S.buf[c].length-cap);
+      S.dirty=true;
+    }
+    S.next=d.next;
+    setTimeout(poll,250);
+  });
+}
+
+function row(k,v){return '<tr><td>'+k+'</td><td>'+v+'</td></tr>';}
+function readouts(){
+  xhr('GET','/api/acq',null,function(err,a){
+    if(err||!a){setDot('d-adc','bad');$('s-adc').textContent=err||'no data';return;}
+    S.acq=a;
+    var ok=a.running&&a.clock_ok;
+    setDot('d-adc',ok?'ok':'bad');
+    $('s-adc').textContent=!a.adc_ok?'not found':!a.clock_ok?'no clock on CLKIN':
+      fmt(a.fs_out,2)+' SPS'+(a.crc_errors||a.overruns?', '+a.crc_errors+' CRC / '+a.overruns+' late':'');
+    $('rate').textContent=fmt(a.fs_in,4)+' SPS in, '+fmt(a.fs_out,4)+' out, filter delay '+fmt(a.delay_ms,1)+' ms';
+    $('acqsum').textContent=a.clk_src+', OSR '+a.osr+', decimate by '+a.decim;
+    for(var c=0;c<2;c++){var s=a.ch[c];if(!s)continue;
+      var vel=s.vel_ums!=null?fmt(s.vel_ums,3)+' µm/s':'set gain and sensitivity';
+      $('ro'+c).innerHTML='<h2><i class="key" style="background:var(--ink'+c+')"></i>'+esc(s.name)+
+        ' <span class="sub">PGA '+s.pga+'</span></h2>'+
+        '<div class="big">'+fmt(s.rms,1)+' <small>counts rms</small></div><table>'+
+        row('At the ADC pin',s.rms_uv!=null?fmt(s.rms_uv,2)+' µV rms':'n/a')+
+        row('At the amplifier output',s.amp_mv!=null?fmt(s.amp_mv,3)+' mV rms':'n/a')+
+        row('Ground velocity',vel)+
+        row('Relative to full scale',s.dbfs!=null?fmt(s.dbfs,1)+' dBFS':'n/a')+
+        row('Offset',grp(s.mean)+' counts')+
+        row('Peak to peak',grp(s.max-s.min)+' counts')+
+        row('Clipped samples, last second','<span style="color:var(--'+(s.clips?'bad':'text')+')">'+s.clips+'</span>')+
+        '</table>';}
+  });
+}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+function status(){
+  xhr('GET','/api/status',null,function(err,s){
+    if(err||!s){setDot('d-wifi','bad');$('s-wifi').textContent='station not answering';return;}
+    S.status=s;
+    $('code').textContent=s.network+'.'+s.station;
+    $('sub').textContent='vseismo '+s.fw+', up '+dur(s.uptime);
+    if(s.time.valid){$('utc').textContent=utcStr(s.utc_ms,true)+' UTC';}
+    setDot('d-time',s.time.src==='ntp'?'ok':s.time.valid?'warn':'bad');
+    $('s-time').textContent=s.time.src==='ntp'?'NTP, synced '+dur(s.time.ntp_age)+' ago':s.time.valid?'RTC holdover':'not set';
+    var r=s.ref;
+    if(r.type==='none'){setDot('d-ref','');$('s-ref').textContent='none, rate is nominal';}
+    else{setDot('d-ref',r.rate_valid?'ok':r.seen?'warn':'bad');
+      $('s-ref').textContent=r.type.toUpperCase()+', '+(r.rate_valid?'ADC '+(r.adc_ppm>=0?'+':'')+fmt(r.adc_ppm,2)+' ppm':r.seen?'measuring':'no edges');}
+    var w=s.wifi;
+    setDot('d-wifi',w.up?'ok':'warn');
+    $('s-wifi').textContent=w.mode==='ap'?'setup portal':w.up?w.ssid+', '+w.band+' GHz, '+w.rssi+' dBm':'connecting';
+    var f=[];for(var b in FAULTS)if(s.faults&(1<<b))f.push(FAULTS[b]);
+    setDot('d-flt',s.class_a?'bad':f.length?'warn':'ok');
+    $('s-flt').textContent=f.length?f.join(', '):'none';
+    $('timesum').textContent=s.time.src+', reference '+r.type;
+    $('timekv').innerHTML=kv([['Wall clock',s.time.valid?utcStr(s.utc_ms,true)+' UTC ('+s.time.src+')':'not set'],
+      ['NTP syncs',s.time.ntp_syncs+(s.time.ntp_age>=0?', last '+dur(s.time.ntp_age)+' ago':'')],
+      ['Reference edges',r.edges+(r.age_ms>=0?', last '+fmt(r.age_ms/1000,1)+' s ago':'')],
+      ['Measured ADC rate',r.rate_valid?fmt(r.fs,4)+' SPS ('+fmt(r.adc_ppm,2)+' ppm)':'needs a 1 Hz reference'],
+      ['ESP32 crystal',r.rate_valid?fmt(r.esp_ppm,2)+' ppm':'n/a'],
+      ['RTC',s.rtc.enabled?s.rtc.model+', '+(s.rtc.online?'online':'offline')+(s.rtc.temp!=null?', '+fmt(s.rtc.temp,2)+' °C':''):'not fitted']]);
+    $('fwsum').textContent='firmware '+s.fw;
+    $('netkv').innerHTML=kv([['Address',w.ip+(w.ip6?'  '+w.ip6:'')],['Network',w.mode==='ap'?'setup portal':w.ssid+', channel '+w.ch+' ('+w.band+' GHz), '+w.rssi+' dBm'],
+      ['Firmware',s.fw+' on IDF '+s.idf+', image '+s.ota],['Memory',Math.round(s.heap/1024)+' KB free, lowest '+Math.round(s.heap_min/1024)+' KB']]);
+  });
+}
+function kv(a){return a.map(function(p){return '<dt>'+p[0]+'</dt><dd>'+esc(p[1])+'</dd>';}).join('');}
+function dur(s){if(s<0)return 'never';if(s<90)return s+' s';if(s<5400)return Math.round(s/60)+' min';if(s<172800)return Math.round(s/3600)+' h';return Math.round(s/86400)+' d';}
+
+/* ── settings ─────────────────────────────────────────────────────────── */
+var CHF=[['name','Label','text',''],['pga','ADC gain (PGA)','pga',''],['div','Divider, ADC V per amp V','text','0.0990 for 9.1k over 1.0k'],
+  ['amp','Amplifier gain','text','From the EQAMP trim pot, 0 if unknown'],['sens','Geophone, V per m/s','text','Datasheet value with the damping shunt fitted'],
+  ['gcal','ADC gain trim','text','1.0 = none, 0.5..1.5'],['ocal','ADC offset trim, counts','text',''],['phase','Phase trim, modulator clocks','text','-512..511, about 0.24 µs each at 8.192 MHz']];
+function buildChannels(){
+  var h='',b='';
+  for(var c=0;c<2;c++){
+    h+='<div><h3><i class="key" style="background:var(--ink'+c+')"></i>Channel '+c+'</h3><div class="grid">';
+    CHF.forEach(function(f){var n='ch'+c+'_'+f[0];
+      h+='<label class="f"><span>'+f[1]+'</span>'+(f[2]==='pga'?'<select name="'+n+'">'+[1,2,4,8,16,32,64,128].map(function(g){return '<option>'+g+'</option>';}).join('')+'</select>':
+        '<input name="'+n+'"'+(f[0]==='name'?' maxlength="7"':' inputmode="decimal"')+'>')+(f[3]?'<em>'+f[3]+'</em>':'')+'</label>';});
+    h+='</div></div>';
+    b+='<div><h3><i class="key" style="background:var(--ink'+c+')"></i>Channel '+c+'</h3><div class="row" style="margin-top:0">'+
+      '<label class="f"><span>Input</span><select data-mux="'+c+'"><option value="normal">Amplifier (normal)</option><option value="short">Shorted (ADC noise floor)</option>'+
+      '<option value="testp">Positive test level</option><option value="testn">Negative test level</option></select></label>'+
+      '<button data-zero="'+c+'">Zero the offset</button></div></div>';
+  }
+  $('chcols').innerHTML=h;$('benchcols').innerHTML=b;
+}
+function loadConfig(){
+  xhr('GET','/api/config',null,function(err,c){if(err||!c)return;S.cfg=c;
+    var set=function(n,v){var el=document.querySelector('[name="'+n+'"]');if(!el)return;
+      if(el.type==='checkbox')el.checked=!!v;else el.value=v;};
+    ['clk_src','clk_hz','osr','decim','taps','station','network','ref','ref_edge','rtc','hostname','port','login','user'].forEach(function(k){set(k,c[k]);});
+    c.ch.forEach(function(ch,i){for(var k in ch)set('ch'+i+'_'+k,ch[k]);$('k'+i).textContent=ch.name;});
+  });
+}
+function save(panel){
+  var p=$(panel),o={},m=document.querySelector('[data-msg="'+panel+'"]');
+  p.querySelectorAll('input[name],select[name]').forEach(function(el){
+    if(el.type==='checkbox')o[el.name]=el.checked?1:0;
+    else if(el.type==='password'){if(el.value)o[el.name]=el.value;}
+    else o[el.name]=el.value.trim();});
+  m.textContent='Saving…';m.className='msg';
+  xhr('POST','/api/config',form(o),function(err,d){
+    if(err){msg(m,'Not saved: '+err+'. Nothing was changed.',false);return;}
+    msg(m,'Saved.'+(d.acq_restarted?' Acquisition restarted with the new settings.':'')+(d.reboot_needed?' Reboot the station to apply the rest.':''),true);
+    if(d.acq_restarted){S.expect=null;}
+    loadConfig();
+  },'application/x-www-form-urlencoded');
+}
+function cmd(o,el){
+  el.textContent='Sending…';el.className='msg';
+  xhr('POST','/api/acq/cmd',form(o),function(err,d){
+    if(err){msg(el,err,false);return;}
+    msg(el,o.cmd==='zero'?'Offset trim set to '+d.ocal+' counts and saved.':o.cmd==='mux'?'Input switched.':o.cmd==='sync'?'Filters synced.':'Acquisition restarted.',true);
+    if(o.cmd==='zero')loadConfig();
+  },'application/x-www-form-urlencoded');
+}
+
+/* ── firmware, log, reboot ────────────────────────────────────────────── */
+function upload(){
+  var f=$('fwfile').files[0],m=$('fwmsg'),pr=$('fwprog');
+  if(!f){msg(m,'Choose the vseismo.bin file from the build folder first.',false);return;}
+  $('fwbtn').disabled=true;pr.hidden=false;pr.value=0;m.textContent='Installing…';m.className='msg';
+  var x=new XMLHttpRequest();x.open('POST','/api/fw/upload',true);
+  x.upload.onprogress=function(e){if(e.lengthComputable)pr.value=e.loaded*100/e.total;};
+  x.onload=function(){var d=null;try{d=JSON.parse(x.responseText);}catch(e){}
+    if(d&&d.ok){msg(m,'Installed '+d.version+'. The station is restarting into it; this page reconnects by itself.',true);
+      setTimeout(function(){location.reload();},15000);}
+    else{msg(m,'Not installed: '+((d&&d.error)||'HTTP '+x.status)+'. The running firmware is unchanged.',false);$('fwbtn').disabled=false;}};
+  x.onerror=function(){msg(m,'Upload interrupted. The running firmware is unchanged.',false);$('fwbtn').disabled=false;};
+  x.send(f);
+}
+function loadLog(){xhr('GET','/api/logs',null,function(err,d){
+  $('log').textContent=err?'Log not available: '+err:(Array.isArray(d)?d:(d.lines||[])).join('\n');
+  var p=$('log');p.scrollTop=p.scrollHeight;});}
+
+/* ── wiring ───────────────────────────────────────────────────────────── */
+buildChannels();
+document.addEventListener('click',function(e){var t=e.target;
+  if(t.dataset.save){save(t.dataset.save);}
+  else if(t.dataset.cmd){cmd({cmd:t.dataset.cmd},$('benchmsg'));}
+  else if(t.dataset.zero!=null){if(confirm('Zero the offset of channel '+t.dataset.zero+'? Short its input first, or the ground motion ends up in the trim.'))cmd({cmd:'zero',ch:t.dataset.zero},$('benchmsg'));}
+});
+document.addEventListener('change',function(e){var t=e.target;
+  if(t.dataset.mux!=null)cmd({cmd:'mux',ch:t.dataset.mux,mode:t.value},$('benchmsg'));
+  if(t.id==='win'||t.id==='scale'||t.id==='demean')S.dirty=true;});
+$('fwbtn').onclick=upload;$('logbtn').onclick=loadLog;
+$('p-log').addEventListener('toggle',function(){if(this.open)loadLog();});
+$('reboot').onclick=function(){if(confirm('Reboot the station? Recording stops for about ten seconds.'))
+  xhr('POST','/api/reboot','',function(){setTimeout(function(){location.reload();},12000);},'application/x-www-form-urlencoded');};
+window.addEventListener('resize',function(){S.dirty=true;});
+
+var lastSpec=0;
+function frame(t){
+  if(!$('pause').checked){
+    if(S.dirty){drawDrum();S.dirty=false;}
+    if(t-lastSpec>2000){drawSpec();lastSpec=t;}
+  }
+  requestAnimationFrame(frame);
+}
+loadConfig();status();readouts();poll();
+setInterval(status,2000);setInterval(readouts,1000);
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

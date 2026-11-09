@@ -1,0 +1,75 @@
+# -----------------------------
+# ESP-IDF / Build System
+# -----------------------------
+build/
+sdkconfig.old
+# NOTE: Usually we KEEP 'sdkconfig' so the project builds with your settings.
+# If you want a fresh config every time, uncomment the line below:
+# sdkconfig
+
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+dependencies.lock
+managed_components/
+esp-idf/
+*.bin
+
+# ESP-IDF Python environment
+.env/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# -----------------------------
+# VS Code
+# -----------------------------
+.vscode/
+.vscode-test/
+.history/
+*.code-workspace
+
+# -----------------------------
+# Editor and tool state
+# (one pattern per line: git has no trailing comments)
+# -----------------------------
+.claude/
+.aider/
+.cursor/
+.roo/
+.git-rules/
+*.ai.tmp
+*.ai.log
+*.chatgpt
+*.copilot
+*.bak
+*.backup
+*.tmp
+
+# -----------------------------
+# Logs & Binary Artifacts
+# -----------------------------
+*.log
+*.trace
+*.gdb
+*.elf
+*.map
+*.zip
+
+# -----------------------------
+# OS / Editor Junk
+# -----------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.orig
+
+# -----------------------------
+# Custom user-specific / Local
+# -----------------------------
+*.kiro
+.env.local
+.env.*.local
