@@ -75,8 +75,11 @@ static int cmd_status(int argc, char **argv)
     if (t.ref != TB_REF_NONE) {
         printf("1 Hz ref   %s, %s, %lu edges", timebase_ref_name(t.ref), t.ref_seen ? "seen" : "not seen",
                (unsigned long)t.ref_edges);
-        if (t.rate_valid) printf(", ADC %.4f SPS (%+.2f ppm), ESP %+.2f ppm", t.fs_measured, t.adc_ppm, t.esp_ppm);
+        if (t.rate_valid) printf(", ADC %.4f SPS (%+.3f +- %.4f ppm), ESP %+.3f ppm",
+                                 t.fs_measured, t.adc_ppm, t.rate_sigma_ppm, t.esp_ppm);
         printf("\n");
+        printf("rate fit   %lu of 300 edges%s, %lu rejected since boot\n", (unsigned long)t.rate_points,
+               t.rate_valid ? "" : " (measuring, 10 needed)", (unsigned long)t.rate_rejects);
     } else {
         printf("1 Hz ref   none (rate is nominal)\n");
     }

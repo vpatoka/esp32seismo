@@ -433,7 +433,11 @@ function status(){
     var r=s.ref;
     if(r.type==='none'){setDot('d-ref','');$('s-ref').textContent='none, rate is nominal';}
     else{setDot('d-ref',r.rate_valid?'ok':r.seen?'warn':'bad');
-      $('s-ref').textContent=r.type.toUpperCase()+', '+(r.rate_valid?'ADC '+(r.adc_ppm>=0?'+':'')+fmt(r.adc_ppm,2)+' ppm':r.seen?'measuring':'no edges');}
+      $('s-ref').textContent=r.type.toUpperCase()+', '+(r.rate_valid?'ADC '+(r.adc_ppm>=0?'+':'')+fmt(r.adc_ppm,2)+' ppm':
+        r.seen?'measuring'+(r.rate_points?' ('+r.rate_points+' of 10 edges)':''):'no edges');}
+    // Uncertainty digits follow sigma: 0.0141 -> 3 decimals, 0.25 -> 2
+    var sgd=r.rate_valid&&r.rate_sigma_ppm>0?Math.min(4,Math.max(1,1-Math.floor(Math.log10(r.rate_sigma_ppm)))):2;
+    var sgn=function(v){return (v>=0?'+':'')+fmt(v,sgd);};
     var w=s.wifi;
     setDot('d-wifi',w.up?'ok':'warn');
     $('s-wifi').textContent=w.mode==='ap'?'setup portal':w.up?w.ssid+', '+w.band+' GHz, '+w.rssi+' dBm':'connecting';
@@ -444,8 +448,11 @@ function status(){
     $('timekv').innerHTML=kv([['Wall clock',s.time.valid?utcStr(s.utc_ms,true)+' UTC ('+s.time.src+')':'not set'],
       ['NTP syncs',s.time.ntp_syncs+(s.time.ntp_age>=0?', last '+dur(s.time.ntp_age)+' ago':'')],
       ['Reference edges',r.edges+(r.age_ms>=0?', last '+fmt(r.age_ms/1000,1)+' s ago':'')],
-      ['Measured ADC rate',r.rate_valid?fmt(r.fs,4)+' SPS ('+fmt(r.adc_ppm,2)+' ppm)':'needs a 1 Hz reference'],
-      ['ESP32 crystal',r.rate_valid?fmt(r.esp_ppm,2)+' ppm':'n/a'],
+      ['Measured ADC rate',r.rate_valid?fmt(r.fs,4)+' SPS ('+sgn(r.adc_ppm)+' ± '+fmt(r.rate_sigma_ppm,sgd)+' ppm)':
+        r.type==='none'?'needs a 1 Hz reference':'measuring'],
+      ['Rate fit',r.type==='none'?'n/a':(r.rate_points||0)+' of 300 edges'+
+        (r.rate_rejects?', '+r.rate_rejects+' rejected since boot':', none rejected')],
+      ['ESP32 crystal',r.rate_valid?sgn(r.esp_ppm)+' ppm':'n/a'],
       ['RTC',s.rtc.enabled?s.rtc.model+', '+(s.rtc.online?'online':'offline')+(s.rtc.temp!=null?', '+fmt(s.rtc.temp,2)+' °C':''):'not fitted']]);
     $('fwsum').textContent='firmware '+s.fw;
     $('netkv').innerHTML=kv([['Address',w.ip+(w.ip6?'  '+w.ip6:'')],['Network',w.mode==='ap'?'setup portal':w.ssid+', channel '+w.ch+' ('+w.band+' GHz), '+w.rssi+' dBm'],
