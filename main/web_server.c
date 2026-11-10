@@ -735,13 +735,13 @@ static esp_err_t api_acq_handler(httpd_req_t *req)
         "\"adc_id\":\"0x%04X\",\"adc_status\":\"0x%04X\",\"clk_src\":\"%s\",\"clk_hz\":%lu,"
         "\"osr\":%u,\"decim\":%u,\"fs_in\":%.4f,\"fs_out\":%.4f,\"delay_ms\":%.2f,"
         "\"n_in\":%llu,\"seq\":%lu,\"crc_errors\":%lu,\"overruns\":%lu,\"stale_frames\":%lu,"
-        "\"status_events\":%lu,\"restarts\":%lu,\"ch\":[",
+        "\"status_events\":%lu,\"restarts\":%lu,\"ring_len\":%lu,\"ch\":[",
         SEISMO_API_VERSION, st.running ? "true" : "false", st.adc_ok ? "true" : "false",
         st.clock_ok ? "true" : "false", st.adc_id, st.adc_status, s_clk_names[g_config.clk_src],
         (unsigned long)st.clk_hz_actual, g_config.osr, g_config.decim, st.fs_in, st.fs_out,
         st.group_delay_s * 1000.0, (unsigned long long)st.n_in, (unsigned long)st.seq,
         (unsigned long)st.crc_errors, (unsigned long)st.overruns, (unsigned long)st.stale_frames,
-        (unsigned long)st.status_events, (unsigned long)st.restarts);
+        (unsigned long)st.status_events, (unsigned long)st.restarts, (unsigned long)acq_ring_len());
 
     for (int c = 0; c < ACQ_NCH && n < 1900; c++) {
         const seismo_ch_cfg_t *cc = &g_config.ch[c];

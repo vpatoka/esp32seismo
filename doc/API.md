@@ -73,7 +73,9 @@ curl 'http://vseismo/api/wave?since=0&max=5'
 | 3 | 8 | Clip: an input sample was within 16 counts of full scale |
 
 - After a restart, output starts only once the FIR history holds settled data (taps + 3 input samples), so there's no ramp up from zero.
-- Poll again with `since=<next>`. If `seq0` isn't the `next` you asked for, samples rolled out of the 4096-sample ring and there's a gap.
+- Poll again with `since=<next>`. If `seq0` isn't the `next` you asked for, there's a gap.
+- The station keeps the last `ring_len` output samples (see `/api/acq`): 131072 with PSRAM, about 22 minutes at 100 SPS, or 4096 (41 s) on a board without it.
+- One reply carries at most `max` samples, and when more are waiting it returns the newest `max`, not the oldest. That suits a live display. A client that falls more than `max` samples behind skips the older ones, even if the ring still holds them; poll at least every `max / fs` seconds (10 s at 100 SPS with `max=1000`) to get every sample.
 
 ## /api/acq counters
 
@@ -86,6 +88,7 @@ curl 'http://vseismo/api/wave?since=0&max=5'
 | `stale_frames` | frames | Frames dropped because they were older than the DRDY count allows (FIFO backlog). Should stay 0. |
 | `status_events` | events | The ADC reset itself (brownout) or resynced without a SYNC from the station |
 | `restarts` | | Acquisition (re)starts since boot |
+| `ring_len` | output samples | Samples the station keeps for `/api/wave`: 131072 in PSRAM, or 4096 in internal RAM when the board has no PSRAM. Divide by `fs_out` for the history in seconds. |
 
 ## /api/acq channel fields
 
