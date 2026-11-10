@@ -271,6 +271,58 @@ The station lives in an uninsulated shed, so expect −30 °C winter nights, 40 
 - **Amplifier and sensors.** Temperature also shifts the L-15B damping and the EQAMP offset. The EQAMP's 0.05 Hz high-pass removes slow offset drift before it reaches the ADC.
 - **Placement.** Put the geophones on a pier or bedrock away from the shed walls, and run the cables slack. Wind on the shed shows up first in the horizontal channel.
 
+## Enclosure and DIN layout
+
+**Box:** about **400 × 300 mm** (15.7 × 11.8 in, or the 16 × 12 in equivalent):
+- polycarbonate or ABS, never metal, so the DevKit's WiFi gets out
+- IP66 or IP67
+- **15 cm or more inside depth**
+- preferably an insulated backplate
+
+Smaller boxes were ruled out:
+
+| Box (outside) | Inside, about | Verdict |
+|---|---|---|
+| 29 × 19 × 14 cm | 27 × 17 × 12 cm | Only with the carrier stacked above the EQAMP. No DIN room. |
+| 12.8 × 9.8 in (325 × 250 mm) | 30 × 23 cm | Flat only with the carrier turned sideways. No terminal row. |
+| 13 × 13 in (330 × 330 mm) | 31 × 31 cm | Works, with a shallow terminal row. The square shape wastes room. |
+| **15.7 × 11.8 in (400 × 300 mm)** | 38 × 28 cm | **Chosen:** two clean rows, room for cables and service |
+
+Inside dimensions are estimates (1 to 1.5 cm lost per side to the walls and lid seal). Check the real box.
+
+**Layout on two TS35 rails (front view):**
+
+```
+┌──────────────────────── 400 × 300 mm polycarbonate box ─────────────────────────┐
+│  rail 1 ════════════════════════════════════════════════════════════════════    │
+│  ┌──────────────────────────────┐   ┌────────────────────┐                      │
+│  │ Webtronics EQAMP             │   │ Seismo carrier     │  ← DevKit antenna    │
+│  │ 19.7 × 14.6 cm               │   │ 13 × 9 cm          │    end toward this   │
+│  │ J7 power  J8 → carrier P1    │   │ DevKit, Click,     │    wall, clear of    │
+│  │ CH1/CH2 out → P2/P3          │   │ ZS-042 on sockets  │    the rail          │
+│  └──────────────────────────────┘   └────────────────────┘                      │
+│                                                                                 │
+│  rail 2 ════════════════════════════════════════════════════════════════════    │
+│  [Z sig][Z gnd][Z shld] [H sig][H gnd][H shld]  ......  [fuse 20V][20V+][GND]   │
+│   geophone end ◄──────── keep apart ────────► power end                         │
+│                                                                                 │
+│  glands (bottom): Z cable, H cable ............ GPS ...... 20 V DC ..... vent   │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Mounting the boards:** snap-on DIN PCB clips or carrier profiles, screwed to standoffs. The carrier's four M3 corner holes take them directly. If the EQAMP's holes don't line up with the clips, put a small insulating plate under it on the clips.
+- **Antenna:** the rail is metal. The DevKit's antenna end sits beside the rail toward the box wall, never across it, and over the antenna keep-out.
+- **Terminal row:**
+  - At one end, two signal-and-ground pairs with a shield terminal each, one set per geophone. The shields connect to amplifier ground at the EQAMP end only.
+  - At the other end, the 20 V input through a DIN fuse terminal. Keep the geophone and power blocks apart.
+- **Wiring:**
+  - Short wires from the blocks to the EQAMP inputs and its J7 jack.
+  - EQAMP J8 to carrier P1, and the EQAMP CH1/CH2 outputs to P2/P3, as one short bundle (see the ground notes).
+  - Nothing runs across the DevKit end.
+- **Cable glands:** two for the geophones and one for power, kept apart, one for the GPS antenna or module, plus one vent membrane against condensation. Add a desiccant pack inside.
+- **Power adapter:** the 20 V laptop adapter stays outside the box, indoors if possible. Only the DC lead comes in.
+- **Spare rail space:** room for a GPS module, an RTC holder or another terminal block later, without redesign.
+
 ## Bring-up order
 
 1. **Bare board, no modules.** U1, U2 and Y1 fitted. Apply 24 V from a bench supply on P1, then check:
