@@ -196,12 +196,12 @@ MPNs carried over from the Nixie carrier BOM are marked "as Nixie". The rest are
 | D1 | 1 | TVS 600 W, 25.6 V standoff (28.2 V for a 28 V adapter) | P6KE30A (P6KE33A for 28 V); verify |
 | D2 | 1 | Schottky 1 A | 1N5817RLG (as Nixie) |
 | D3 | 1 | Schottky 1 A, reverse block | 1N5819RLG (as Nixie) |
-| FB1 | 1 | Axial ferrite bead | Fair-Rite 2743001112 (verify) |
+| FB1 | 1 | Axial ferrite bead on lead, about 70 Ω at 100 MHz, 3.5 × 4.45 mm body | Fair-Rite 2743001112 (confirmed, active) |
 | C1 | 1 | 22 µF 50 V electrolytic | EEU-FR1H220 (verify) |
 | C2 | 1 | 100 µF 25 V electrolytic | EEU-FR1E101 (as Nixie) |
 | C4, C5 | 2 | 10 µF 16 V electrolytic, 5 mm | to choose |
 | C3, C6, C7, C12, C13 | 5 | 100 nF 50 V X7R | C320C104K5R5TA (as Nixie) |
-| C10, C11 | 2 | 47 nF C0G/NP0, 5 mm pitch | to choose, C0G only |
+| C10, C11 | 2 (buy 4) | 47 nF C0G/NP0, 25 V, ±10 %, radial 5.08 mm, 5.08 × 3.18 mm body | KEMET GoldMax 300 C0G, base C327C (Digi-Key listing checked, active) |
 | R20, R22 | 2 (buy 5+) | 9.1k ±0.1 % ±25 ppm/°C metal film, axial 1/4 W, 6.3 × 2.4 mm | Yageo MFP series (Digi-Key listing checked, active) |
 | R21, R23 | 2 (buy 5+) | 1.0k ±0.1 % ±25 ppm/°C metal film, axial 1/4 W, 6.3 × 2.4 mm | Yageo MFP series (Digi-Key listing checked, active) |
 | R10-R16, R32, R33 | 9 | 33 Ω 1/4 W (0 Ω links work too) | to choose |
@@ -227,7 +227,7 @@ PCB: JLCPCB or PCBWay, 2 layers, 130 × 90 mm, 1.6 mm, 1 oz, HASL.
 - **Divider.** 9.1k over 1.0k gives 0.099. Both halves come from one series (Yageo MFP), so the ratio tracks with temperature in the shed. The EQAMP's ±10 V becomes ±0.99 V, and even a ±12 V rail clip stays at ±1.19 V, inside the ±1.2 V full scale. The 0.1 % parts keep the two channels matched before any calibration.
 - **Pseudo-differential per channel.** AINx− is that channel's own amplifier ground, not the carrier ground. A small voltage between amplifier ground and carrier ground then cancels in the ADC instead of landing in the record.
 - **No clamp diodes.** A clamp to GND would conduct at about −0.6 V and clip the negative half of the signal. The divider keeps a rail-to-rail amplifier inside the ADC range. If the Click is unpowered, the 9.1k limits the current into its ESD diodes to about 1 mA.
-- **RC.** 47 nF on the 1.0k (about 0.9k Thevenin) puts a pole near 3.7 kHz. That's plenty of anti-aliasing for a ΔΣ modulator running at MHz rates, and it also feeds the ADC's input sampling charge. C0G only, since X7R distorts.
+- **RC.** The C327C body is 3.18 mm wide, a little more than the footprint drawing, so leave about 1 mm around C10/C11. 25 V is plenty: C0G doesn't lose capacitance with voltage, and the worst case (divider open) is the amplifier's ±12 V. 47 nF on the 1.0k (about 0.9k Thevenin) puts a pole near 3.7 kHz. That's plenty of anti-aliasing for a ΔΣ modulator running at MHz rates, and it also feeds the ADC's input sampling charge. C0G only, since X7R distorts.
 - **Gain error at PGA 1 (about 0.3 %).** The ADS131M02 turns on its input pre-charge buffer only above gain 4. At gain 1 the inputs are unbuffered switched-capacitor inputs. That has two effects:
   - The ADC's differential input impedance (on the order of 330 kΩ at gain 1 in high-resolution mode; check the datasheet table) loads the divider's 9.1k ∥ 1.0k ≈ 0.9k source. That reads about 0.3 % low.
   - The error is nearly the same on both channels, because the dividers match. Measure it once with the "Positive test level" and a known amplifier signal, and trim it with `chN_gcal`.
@@ -364,7 +364,7 @@ None. The carrier matches [`main/io_map.h`](../../main/io_map.h). Settings that 
 ## Open items
 
 - A KiCad footprint for the CB3LV. The netlist names a project footprint, `seismo:Oscillator_CTS_CB3LV_7.0x5.0mm`, to draw from the CTS land pattern. One copy of the datasheet is titled 7.5 × 5 mm, so check the revision.
-- Verify the LP2950ACZ-3.3 TO-92 pinout and the ferrite bead part.
+- Verify the LP2950ACZ-3.3 TO-92 pinout.
 - The Click outline, the mikroBUS row spacing and the CLKIN pad position, from the MikroE drawing.
 - DevKit revision (v1.1 or v1.2) and the J1/J3 pinout on the board in hand.
 - The ZS-042 header position relative to its mounting hole, for a 1:1 fit.
