@@ -202,8 +202,8 @@ MPNs carried over from the Nixie carrier BOM are marked "as Nixie". The rest are
 | C4, C5 | 2 | 10 µF 16 V electrolytic, 5 mm | to choose |
 | C3, C6, C7, C12, C13 | 5 | 100 nF 50 V X7R | C320C104K5R5TA (as Nixie) |
 | C10, C11 | 2 | 47 nF C0G/NP0, 5 mm pitch | to choose, C0G only |
-| R20, R22 | 2 | 9.1k 0.1 % 25 ppm metal film | to choose |
-| R21, R23 | 2 | 1.0k 0.1 % 25 ppm metal film | to choose |
+| R20, R22 | 2 (buy 5+) | 9.1k ±0.1 % ±25 ppm/°C metal film, axial 1/4 W, 6.3 × 2.4 mm | Yageo MFP series (Digi-Key listing checked, active) |
+| R21, R23 | 2 (buy 5+) | 1.0k ±0.1 % ±25 ppm/°C metal film, axial 1/4 W, 6.3 × 2.4 mm | Yageo MFP series (Digi-Key listing checked, active) |
 | R10-R16, R32, R33 | 9 | 33 Ω 1/4 W (0 Ω links work too) | to choose |
 | R30 (DNP) | 1 | 10 Ω 1/4 W, fit only if hum | to choose |
 | R1 | 1 | 2.2k 1/4 W | CF14JT2K20 (as Nixie) |
@@ -224,7 +224,7 @@ PCB: JLCPCB or PCBWay, 2 layers, 130 × 90 mm, 1.6 mm, 1 oz, HASL.
 
 ## Design notes
 
-- **Divider.** 9.1k over 1.0k gives 0.099. The EQAMP's ±10 V becomes ±0.99 V, and even a ±12 V rail clip stays at ±1.19 V, inside the ±1.2 V full scale. The 0.1 % parts keep the two channels matched before any calibration.
+- **Divider.** 9.1k over 1.0k gives 0.099. Both halves come from one series (Yageo MFP), so the ratio tracks with temperature in the shed. The EQAMP's ±10 V becomes ±0.99 V, and even a ±12 V rail clip stays at ±1.19 V, inside the ±1.2 V full scale. The 0.1 % parts keep the two channels matched before any calibration.
 - **Pseudo-differential per channel.** AINx− is that channel's own amplifier ground, not the carrier ground. A small voltage between amplifier ground and carrier ground then cancels in the ADC instead of landing in the record.
 - **No clamp diodes.** A clamp to GND would conduct at about −0.6 V and clip the negative half of the signal. The divider keeps a rail-to-rail amplifier inside the ADC range. If the Click is unpowered, the 9.1k limits the current into its ESD diodes to about 1 mA.
 - **RC.** 47 nF on the 1.0k (about 0.9k Thevenin) puts a pole near 3.7 kHz. That's plenty of anti-aliasing for a ΔΣ modulator running at MHz rates, and it also feeds the ADC's input sampling charge. C0G only, since X7R distorts.
