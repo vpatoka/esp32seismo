@@ -23,7 +23,11 @@
  * restarts it too.
  *
  * SNTP runs in immediate mode: each hourly sync may step the system clock
- * by a few ms. Timestamps follow the step; the sample stream does not.
+ * by a few ms, so log times are exact. Sample timestamps do not follow the
+ * step. With GPS PPS they come from the sample count (see timebase.h);
+ * without it, from an offset slewed toward the system clock at TB_SLEW_PPM.
+ * IDF's own smooth mode is not used: it slews at 1/64 (15 625 ppm), which
+ * would squeeze a 5 ms correction into 0.3 s of samples.
  */
 
 #include "timebase.h"
@@ -61,7 +65,47 @@ static volatile int64_t s_edge_t;
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 
 static tb_status_t s_st = { .time_src = "none", .ntp_age_s = -1, .ref_age_ms = -1, .rtc_model = "none" };
+static volatile tb_tq_t s_src_q = TB_TQ_NONE;   /* quality of the system-clock path */
 static volatile bool s_rtc_write_req;
+
+/* Sample clock without pps: utc = esp + off(esp), with
+ *   off(t) = s_off_us + s_off_rate * (t - s_off_t)
+ * a continuous piecewise-linear offset. Each tracking pass re-bases it at
+ * "now" and picks a new rate toward the system clock offset, limited to
+ * TB_SLEW_PPM, so corrections are slewed in, never stepped. Guarded by s_mux. */
+#define OFF_HORIZON_US 4000000.0      /* aim to close the gap over this long, at most */
+static int64_t s_off_us;
+static double  s_off_rate;            /* us per us */
+static bool    s_off_valid;
+static int64_t s_off_t;
+/* The segment before the last re-base. Samples are stamped up to a filter
+ * delay in the past (0.1 s at 100 SPS, more at low rates); a time before the
+ * re-base must use the line that was in force then, or every re-base would
+ * leave a (rate change) x (delay) gap between neighbouring samples. */
+static int64_t s_offp_us, s_offp_t;
+static double  s_offp_rate;
+/* While the pps model holds, the sample clock is steered to UTC from the PPS
+ * edges instead of the system clock, so the handover at the end of holdover
+ * starts from PPS time and slews toward SNTP: no jump. Guarded by s_mux. */
+static int64_t s_pps_off_us;          /* UTC - esp at the last good edge ... */
+static int64_t s_pps_off_t;           /* ... whose esp time was this ... */
+static double  s_pps_ff;              /* ... drifting at -esp_ppm (us per us) */
+static bool    s_pps_off_valid;
+
+static inline int64_t off_at(int64_t t)
+{
+    if (t < s_off_t) return s_offp_us + (int64_t)llround(s_offp_rate * (double)(t - s_offp_t));
+    return s_off_us + (int64_t)llround(s_off_rate * (double)(t - s_off_t));
+}
+
+/* pps model, published by on_edge, read by timebase_sample_utc_us. Guarded by s_mux. */
+static struct {
+    bool     valid;
+    uint32_t epoch;
+    double   pos0, fs, a, b;      /* pos(x) = pos0 + fs x + a + b x */
+    int64_t  utc_x0_s;            /* UTC second at x = 0 */
+    int64_t  last_edge_t;         /* esp time of the last accepted edge */
+} s_model;
 static volatile int64_t s_ntp_last_us;
 static bool s_sntp_started;
 static bool s_use_rtc;
@@ -89,21 +133,127 @@ bool timebase_time_valid(void)
     return s_st.time_valid;
 }
 
+const char *timebase_tq_name(tb_tq_t q)
+{
+    switch (q) {
+        case TB_TQ_PPS: return "pps";
+        case TB_TQ_NTP: return "ntp";
+        case TB_TQ_RTC: return "rtc";
+        default:        return "none";
+    }
+}
+
+/* System clock minus esp_timer, right now. */
+static int64_t sys_offset_us(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    int64_t esp = esp_timer_get_time();
+    return (int64_t)tv.tv_sec * 1000000 + tv.tv_usec - esp;
+}
+
+static inline bool model_usable(uint32_t epoch, int64_t now);
+
+/* Move the sample clock toward UTC (PPS when it holds, else the system
+ * clock), slew-limited. Called from the timebase task at least once a second. */
+static void offset_track(void)
+{
+    if (!s_st.time_valid) return;
+    int64_t sys = sys_offset_us();
+    int64_t now = esp_timer_get_time();
+    uint64_t n;
+    int64_t t_d;
+    uint32_t epoch;
+    acq_get_position(&n, &t_d, &epoch);
+    bool stepped = false;
+    portENTER_CRITICAL(&s_mux);
+    /* With PPS the target drifts with the ESP crystal error, which the rate
+     * fit measures; feed that drift forward so the ramp tracks it without lag
+     * and the holdover extrapolates it. The system clock runs on the ESP timer,
+     * so its offset is constant between SNTP syncs: no feed-forward. */
+    bool pps = s_pps_off_valid && model_usable(epoch, now);
+    double ff = pps ? s_pps_ff : 0.0;
+    int64_t target = pps ? s_pps_off_us + (int64_t)llround(s_pps_ff * (double)(now - s_pps_off_t)) : sys;
+    int64_t cur = s_off_valid ? off_at(now) : target;
+    int64_t d = target - cur;
+    bool jump = !s_off_valid || llabs(d) > TB_STEP_US;
+    if (jump) {
+        stepped = s_off_valid;
+        cur = target;
+        d = 0;
+        s_off_valid = true;
+    }
+    /* Re-base at now (continuous), then ramp toward the target: the target's
+     * own drift plus a slew-limited correction. */
+    double rate = (double)d / OFF_HORIZON_US;
+    const double lim = TB_SLEW_PPM * 1e-6;
+    if (rate > lim) rate = lim;
+    if (rate < -lim) rate = -lim;
+    rate += ff;
+    if (jump) {                         /* a step: nothing before it to stay continuous with */
+        s_offp_us = cur;
+        s_offp_t = now;
+        s_offp_rate = 0;
+    } else {
+        s_offp_us = s_off_us;
+        s_offp_t = s_off_t;
+        s_offp_rate = s_off_rate;
+    }
+    s_off_us = cur;
+    s_off_t = now;
+    s_off_rate = rate;
+    s_st.slew_ms = (double)d / 1000.0;
+    portEXIT_CRITICAL(&s_mux);
+    if (stepped) ESP_LOGW(TAG, "System clock moved by more than %d s: sample clock stepped", TB_STEP_US / 1000000);
+}
+
 int64_t timebase_esp_to_utc_us(int64_t t_esp)
 {
     if (!s_st.time_valid) return 0;
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    int64_t now_esp = esp_timer_get_time();
-    return (int64_t)tv.tv_sec * 1000000 + tv.tv_usec + (t_esp - now_esp);
+    portENTER_CRITICAL(&s_mux);
+    bool ok = s_off_valid;
+    int64_t off = ok ? off_at(t_esp) : 0;
+    portEXIT_CRITICAL(&s_mux);
+    if (!ok) off = sys_offset_us();        /* time just became valid; the task catches up */
+    return t_esp + off;
+}
+
+/* The pps model applies to this epoch and is fresh enough. Caller holds s_mux. */
+static inline bool model_usable(uint32_t epoch, int64_t now)
+{
+    return s_model.valid && s_model.epoch == epoch &&
+           now - s_model.last_edge_t < (int64_t)TB_PPS_HOLDOVER_S * 1000000;
+}
+
+int64_t timebase_sample_utc_us(uint32_t epoch, double pos, int64_t t_esp_us, tb_tq_t *tq)
+{
+    int64_t now = esp_timer_get_time();
+    portENTER_CRITICAL(&s_mux);
+    bool use = model_usable(epoch, now);
+    double pos0 = s_model.pos0, fs = s_model.fs, a = s_model.a, b = s_model.b;
+    int64_t x0 = s_model.utc_x0_s;
+    portEXIT_CRITICAL(&s_mux);
+    if (use) {
+        double x = (pos - pos0 - a) / (fs + b);    /* reference seconds since x = 0 */
+        if (tq) *tq = TB_TQ_PPS;
+        return x0 * 1000000 + (int64_t)llround(x * 1e6);
+    }
+    int64_t utc = timebase_esp_to_utc_us(t_esp_us);
+    if (tq) *tq = utc ? s_src_q : TB_TQ_NONE;
+    return utc;
 }
 
 void timebase_get_status(tb_status_t *out)
 {
+    int64_t now = esp_timer_get_time();
+    uint32_t epoch = 0;
+    uint64_t n;
+    int64_t t_d;
+    acq_get_position(&n, &t_d, &epoch);
     portENTER_CRITICAL(&s_mux);
     *out = s_st;
+    out->quality = model_usable(epoch, now) ? TB_TQ_PPS : s_st.time_valid ? s_src_q : TB_TQ_NONE;
     portEXIT_CRITICAL(&s_mux);
-    int64_t now = esp_timer_get_time();
     int64_t ntp = s_ntp_last_us;
     out->ntp_age_s = ntp ? (now - ntp) / 1000000 : -1;
     int64_t e = s_edge_t;
@@ -120,6 +270,7 @@ static void sntp_synced(struct timeval *tv)
     s_st.ntp_syncs++;
     s_st.time_valid = true;
     s_st.time_src = "ntp";
+    s_src_q = TB_TQ_NTP;
     portEXIT_CRITICAL(&s_mux);
     fault_clear(FAULT_NO_TIME);
     s_rtc_write_req = true;
@@ -159,6 +310,7 @@ static void rtc_seed(void)
     portENTER_CRITICAL(&s_mux);
     s_st.time_valid = true;
     s_st.time_src = "rtc";
+    s_src_q = TB_TQ_RTC;
     portEXIT_CRITICAL(&s_mux);
     fault_clear(FAULT_NO_TIME);
     ESP_LOGI(TAG, "System clock seeded from the RTC (holdover until SNTP)");
@@ -213,7 +365,46 @@ static struct {
     double   a, b;          /* y = a + b x from the last solve */
     bool     have_line;
     int      bad_run;
+    bool     named;         /* utc_x0_s known */
+    int64_t  utc_x0_s;      /* UTC second of the edge at x = 0 */
+    int      name_bad;      /* consecutive edges whose SNTP name disagrees */
 } s_fit;
+
+#define NAME_REANCHOR_AFTER 3   /* edges in a row with another second name: re-anchor */
+
+static void model_invalidate(void)
+{
+    portENTER_CRITICAL(&s_mux);
+    s_model.valid = false;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+/* Name the second of a GPS PPS edge at reference second x from the system
+ * clock (good to well under 0.5 s with SNTP), and keep UTC of x = 0. One
+ * disagreeing edge is ignored; a run of them (a leap second, or the first
+ * SNTP sync after an RTC seed that was off by seconds) moves the anchor. */
+static void name_edge(int64_t t_edge, double x)
+{
+    if (s_st.ref != TB_REF_GPS || !s_st.time_valid) return;
+    int64_t utc_us = t_edge + sys_offset_us();
+    int64_t sec = (utc_us + 500000) / 1000000;
+    int64_t x0 = sec - (int64_t)llround(x);
+    if (!s_fit.named) {
+        s_fit.utc_x0_s = x0;
+        s_fit.named = true;
+        s_fit.name_bad = 0;
+        return;
+    }
+    if (x0 == s_fit.utc_x0_s) { s_fit.name_bad = 0; return; }
+    if (++s_fit.name_bad >= NAME_REANCHOR_AFTER) {
+        ESP_LOGW(TAG, "PPS seconds renamed by %+lld s from the system clock", (long long)(x0 - s_fit.utc_x0_s));
+        s_fit.utc_x0_s = x0;
+        s_fit.name_bad = 0;
+        portENTER_CRITICAL(&s_mux);
+        s_st.pps_naming_errors++;
+        portEXIT_CRITICAL(&s_mux);
+    }
+}
 
 static void fit_add(double x, double y, double e)
 {
@@ -234,6 +425,8 @@ static void fit_start(double pos, int64_t t, double fs, uint32_t epoch)
     s_fit.t0 = t;
     s_fit.t_last = t;
     fit_add(0.0, 0.0, 0.0);
+    model_invalidate();
+    name_edge(t, 0.0);
 }
 
 /* Least-squares slopes of y and e against x over the window. Two passes
@@ -272,6 +465,7 @@ static void rate_invalidate(void)
     portENTER_CRITICAL(&s_mux);
     s_st.rate_valid = false;
     s_st.rate_points = s_fit.n;
+    s_model.valid = false;
     portEXIT_CRITICAL(&s_mux);
 }
 
@@ -316,6 +510,7 @@ static void on_edge(int64_t t_edge)
     double e = (double)(t_edge - s_fit.t0) - 1e6 * x;
     s_fit.x_last = x;
     s_fit.t_last = t_edge;
+    name_edge(t_edge, x);           /* the second name only needs the edge, not its timing quality */
 
     if (s_fit.have_line && s_fit.n >= RATE_MIN_PTS) {
         double r = y - (s_fit.a + s_fit.b * x);
@@ -346,6 +541,21 @@ static void on_edge(int64_t t_edge)
     s_st.esp_ppm = be;
     s_st.rate_sigma_ppm = sb / fs * 1e6;
     s_st.rate_points = s_fit.n;
+    /* Publish the pps model: the fitted line through the edges, named in UTC. */
+    s_model.valid = s_st.ref == TB_REF_GPS && s_fit.named;
+    s_model.epoch = s_fit.epoch;
+    s_model.pos0 = s_fit.pos0;
+    s_model.fs = s_fit.fs;
+    s_model.a = s_fit.a;
+    s_model.b = s_fit.b;
+    s_model.utc_x0_s = s_fit.utc_x0_s;
+    s_model.last_edge_t = t_edge;
+    if (s_model.valid) {                /* this edge is UTC second utc_x0 + x exactly */
+        s_pps_off_us = (s_fit.utc_x0_s + (int64_t)llround(x)) * 1000000 - t_edge;
+        s_pps_off_t = t_edge;
+        s_pps_ff = -be * 1e-6;          /* esp runs fast by be ppm: UTC - esp falls */
+        s_pps_off_valid = true;
+    }
     portEXIT_CRITICAL(&s_mux);
 }
 
@@ -358,6 +568,7 @@ static void timebase_task(void *arg)
     for (;;) {
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
         int64_t now = esp_timer_get_time();
+        offset_track();
 
         int64_t e = s_edge_t;
         if (s_st.ref != TB_REF_NONE && e && e != last_edge_seen) {

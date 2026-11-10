@@ -93,6 +93,7 @@ static bool     s_bits_seen;            /* STATUS DRDY bits observed since the r
 static uint32_t s_bits_probe;
 static int64_t  s_period_us;
 static int64_t  s_gd_us;
+static double   s_gd_smp;               /* total group delay, input periods */
 static int64_t  s_last_evt, s_last_try;
 
 /* Output ring. Single writer (this task), lock-free readers. The writer
@@ -315,13 +316,16 @@ static void stats_push(const int32_t *v)
     stats_reset(s_acc.win);
 }
 
-static void ring_push(int64_t t_esp, const int32_t *v, uint8_t flags)
+/* pos: input-sample position the output stands for; t_esp: its esp time. */
+static void ring_push(double pos, int64_t t_esp, const int32_t *v, uint8_t flags)
 {
     uint32_t seq = s_seq;                              /* only this task writes it */
     acq_sample_t *slot = &s_ring[seq & (s_ring_len - 1)];
+    tb_tq_t tq = TB_TQ_NONE;
     slot->seq = seq;
     slot->flags = flags;
-    slot->utc_us = timebase_esp_to_utc_us(t_esp);
+    slot->utc_us = timebase_sample_utc_us(s_epoch, pos, t_esp, &tq);
+    slot->tq = (uint8_t)tq;
     memcpy(slot->v, v, sizeof(slot->v));
     if (s_ring_fill < s_ring_len) __atomic_store_n(&s_ring_fill, s_ring_fill + 1, __ATOMIC_RELEASE);
     __atomic_store_n(&s_seq, seq + 1, __ATOMIC_RELEASE);
@@ -426,7 +430,7 @@ static void push_input(const int32_t *raw, int64_t t, uint8_t ev)
 
     int32_t y[ACQ_NCH];
     for (int c = 0; c < ACQ_NCH; c++) y[c] = fir_out(c);
-    ring_push(t - s_gd_us, y, flags);
+    ring_push((double)s_n_in - s_gd_smp, t - s_gd_us, y, flags);
     s_st.seq = s_seq;
     stats_push(y);
 }
@@ -564,7 +568,8 @@ static bool reconfigure(void)
     int decim = s_set.decim ? s_set.decim : 1;
     fir_design(s_set.taps, decim);
     double fs_in = (double)clk / 2.0 / s_set.osr;
-    double gd = ((s_taps - 1) / 2.0 + ADS_SINC3_DELAY_PERIODS) / fs_in;
+    s_gd_smp = (s_taps - 1) / 2.0 + ADS_SINC3_DELAY_PERIODS;
+    double gd = s_gd_smp / fs_in;
 
     memset(s_hold, 0, sizeof(s_hold));
     memset(s_taint, 0, sizeof(s_taint));

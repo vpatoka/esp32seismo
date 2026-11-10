@@ -27,6 +27,29 @@ The API is the product. The web page is one client of it, and it gets no private
 | GET | `/portal`, `/api/wifi/scan`, `/api/wifi/status` | WiFi setup |
 | POST | `/api/wifi/connect`, `/api/wifi/forget` | Save or clear WiFi credentials |
 
+## /api/status: time
+
+```
+curl -s http://vseismo/api/status | jq .time
+{"valid":true,"src":"ntp","ntp_syncs":12,"ntp_age":1834,
+ "quality":"pps","slew_ms":0.004,"pps_naming_errors":0}
+```
+
+| Field | Meaning |
+|---|---|
+| `valid`, `src` | The system clock has wall-clock time, and from where: `ntp`, `rtc` (DS323x seed, no SNTP yet) or `none` |
+| `ntp_syncs`, `ntp_age` | SNTP syncs since boot, seconds since the last one |
+| `quality` | How a sample timestamped now gets its time, best first: `pps`, `ntp`, `rtc`, `none`. See below. |
+| `slew_ms` | Sample clock behind (positive) or ahead of its target, in ms, still being slewed in |
+| `pps_naming_errors` | Times the UTC second assigned to the PPS edges had to be moved. Expect 1 at a leap second, otherwise 0. |
+
+Sample timestamps come from one of two models.
+
+- `pps`: GPS PPS present and the rate fit valid (`ref.rate_valid`). A sample's time is computed from its position in the ADC sample count, on the line fitted through the PPS edges. The PPS edge defines the second; SNTP only names it, rounded to the nearest second, so SNTP error, SNTP steps and interrupt jitter stay out of the timestamps. It stays `pps` for 30 s after the last good edge (holdover).
+- `ntp` and `rtc`: no usable PPS. A sample's time is its DRDY time through a sample clock that follows the system clock but changes rate by at most 500 ppm. SNTP still steps the system clock every hour (log times stay exact), but sample timestamps never step: a 10 ms correction takes 20 s to slew in. A change over 0.5 s (a leap second, a first SNTP sync after a bad RTC seed) is applied at once. While `pps` holds, the sample clock is steered to PPS time instead, so losing PPS hands over without a jump.
+
+A DS323x SQW reference (`ref.type` `rtc`) improves the rate measurement only. Its edges are not UTC seconds, so it never gives `pps` quality.
+
 ## /api/status: 1 Hz reference
 
 ```
@@ -56,12 +79,13 @@ The rate is the slope of a least-squares line through the ADC sample position at
 
 ```
 curl 'http://vseismo/api/wave?since=0&max=5'
-{"ok":true,"next":1234,"seq0":1229,"n":5,"fs":100.0000,"t0":1794240527736,
+{"ok":true,"next":1234,"seq0":1229,"n":5,"pending":0,"fs":100.0000,"t0":1794240527736,"tq":"pps",
  "ch0":[12,-3,8,1,-6],"ch1":[40,38,41,44,39],"flags":[0,0,0,1,1]}
 ```
 
 - Values are ADC counts after the decimating FIR, 24-bit scale.
 - `t0` is the UTC time of the first sample in ms. It's 0 until the station has wall-clock time.
+- `tq` is the time quality of that first sample: `pps`, `ntp`, `rtc` or `none` (see /api/status: time). Following samples are `t0 + i / fs` to well within a sample period. Exactly so with `pps`; with `ntp` the slewed sample clock and DRDY interrupt jitter (tens of µs) add to that.
 - Timestamps are corrected for the full group delay (ADC sinc3, 1.5 input periods, plus the FIR, (taps − 1) / 2 input periods), so they mark when the ground moved.
 - `flags` has one entry per sample. A bit is set when the FIR window of that sample held an input of that kind. A flagged sample is still on the correct time grid, but its value is not a clean measurement.
 

@@ -8,10 +8,13 @@
  * the task reads one frame, runs the decimating FIR and publishes output
  * samples into a ring that the web API and (later) the PSN stream read.
  *
- * Output sample timestamps are the DRDY time of the newest input sample
- * minus the total group delay (ADC sinc3, 1.5 input periods, plus the FIR,
- * (taps - 1) / 2 input periods), mapped to UTC through the system clock.
- * They mark when the ground moved, not when the sample left the filter.
+ * An output sample stands for input-sample position n - D, where n is the
+ * input count at its newest input and D the total group delay in input
+ * periods (ADC sinc3 1.5, plus the FIR (taps - 1) / 2). timebase maps that
+ * position to UTC: from the sample count against GPS PPS when it can,
+ * otherwise from the DRDY time minus the delay through the slewed sample
+ * clock. Either way the timestamp marks when the ground moved, not when the
+ * sample left the filter, and tq says which model produced it.
  *
  * Every input period counts, read or not: a lost or corrupt input sample is
  * replaced by the last good one, the sample counter still advances, and the
@@ -89,6 +92,7 @@ typedef struct {
 typedef struct {
     uint32_t seq;
     uint8_t  flags;           /* ACQ_F_* */
+    uint8_t  tq;              /* tb_tq_t: how utc_us was obtained */
     int64_t  utc_us;          /* 0 when no wall-clock time yet */
     int32_t  v[ACQ_NCH];
 } acq_sample_t;

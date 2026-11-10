@@ -686,7 +686,8 @@ static esp_err_t api_status_handler(httpd_req_t *req)
         "{\"ok\":true,\"api\":%d,"
         "\"fw\":\"%s\",\"idf\":\"%s\",\"uptime\":%lld,\"heap\":%lu,\"heap_min\":%lu,"
         "\"station\":\"%s\",\"network\":\"%s\",\"utc_ms\":%lld,"
-        "\"time\":{\"valid\":%s,\"src\":\"%s\",\"ntp_syncs\":%lu,\"ntp_age\":%lld},"
+        "\"time\":{\"valid\":%s,\"src\":\"%s\",\"ntp_syncs\":%lu,\"ntp_age\":%lld,"
+        "\"quality\":\"%s\",\"slew_ms\":%.3f,\"pps_naming_errors\":%lu},"
         "\"ref\":{\"type\":\"%s\",\"edge\":\"%s\",\"seen\":%s,\"edges\":%lu,\"age_ms\":%lld,"
         "\"rate_valid\":%s,\"fs\":%s,\"adc_ppm\":%s,\"esp_ppm\":%s,"
         "\"rate_sigma_ppm\":%s,\"rate_points\":%lu,\"rate_rejects\":%lu},"
@@ -699,6 +700,7 @@ static esp_err_t api_status_handler(httpd_req_t *req)
         (unsigned long)esp_get_free_heap_size(), (unsigned long)esp_get_minimum_free_heap_size(),
         g_config.station, g_config.network, (long long)(utc_us / 1000),
         tb.time_valid ? "true" : "false", tb.time_src, (unsigned long)tb.ntp_syncs, (long long)tb.ntp_age_s,
+        timebase_tq_name(tb.quality), tb.slew_ms, (unsigned long)tb.pps_naming_errors,
         timebase_ref_name(tb.ref), tb.ref_rising ? "rise" : "fall", tb.ref_seen ? "true" : "false",
         (unsigned long)tb.ref_edges, (long long)tb.ref_age_ms,
         tb.rate_valid ? "true" : "false", fsm, appm, espm,
@@ -806,9 +808,11 @@ static esp_err_t api_wave_handler(httpd_req_t *req)
 
     set_json_headers(req);
     char line[160];
-    snprintf(line, sizeof(line), "{\"ok\":true,\"next\":%lu,\"seq0\":%lu,\"n\":%d,\"pending\":%lu,\"fs\":%.4f,\"t0\":%lld",
+    snprintf(line, sizeof(line),
+             "{\"ok\":true,\"next\":%lu,\"seq0\":%lu,\"n\":%d,\"pending\":%lu,\"fs\":%.4f,\"t0\":%lld,\"tq\":\"%s\"",
              (unsigned long)next, (unsigned long)(cnt ? s[0].seq : next), cnt, (unsigned long)pending,
-             st.fs_out, (long long)(cnt ? s[0].utc_us / 1000 : 0));
+             st.fs_out, (long long)(cnt ? s[0].utc_us / 1000 : 0),
+             timebase_tq_name(cnt ? (tb_tq_t)s[0].tq : TB_TQ_NONE));
     httpd_resp_send_chunk(req, line, HTTPD_RESP_USE_STRLEN);
 
     char chunk[512];
