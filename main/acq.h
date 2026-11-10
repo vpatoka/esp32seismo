@@ -109,14 +109,21 @@ void acq_request_mux(uint8_t ch, uint8_t mux);   /* ads_mux_t, not persisted */
 void acq_get_status(acq_status_t *out);
 
 /**
- * @brief Copy samples newer than since_seq, oldest first.
+ * @brief Copy samples from since_seq on, in seq order.
+ *
+ * When more than max are waiting, oldest_first picks which max: false
+ * returns the newest (live display, skips the backlog), true returns the
+ * oldest still in the ring (recorder catching up, nothing skipped).
  *
  * Lock-free: the acquisition task is the only writer and never waits on a
  * reader. Any number of readers; a sample the writer overwrote during the
  * copy is dropped from the front of the result, never returned torn.
- * @return number copied. *next_seq is the seq to ask for next time.
+ * @param[out] next_seq  seq to ask for next time
+ * @param[out] pending   samples newer than the last one returned (may be NULL)
+ * @return number copied
  */
-int acq_read_since(uint32_t since_seq, acq_sample_t *out, int max, uint32_t *next_seq);
+int acq_read_since(uint32_t since_seq, acq_sample_t *out, int max, bool oldest_first,
+                   uint32_t *next_seq, uint32_t *pending);
 
 /** @brief Output samples the ring holds (ACQ_RING_LEN_PSRAM or ACQ_RING_LEN). */
 uint32_t acq_ring_len(void);

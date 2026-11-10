@@ -335,16 +335,22 @@ static inline uint32_t ring_oldest(uint32_t head)
     return head - keep;                                            /* wraps correctly */
 }
 
-int acq_read_since(uint32_t since, acq_sample_t *out, int max, uint32_t *next_seq)
+int acq_read_since(uint32_t since, acq_sample_t *out, int max, bool oldest_first,
+                   uint32_t *next_seq, uint32_t *pending)
 {
+    if (pending) *pending = 0;
     if (!s_ring || max <= 0) { if (next_seq) *next_seq = since; return 0; }
     const uint32_t mask = s_ring_len - 1;
     uint32_t head = __atomic_load_n(&s_seq, __ATOMIC_ACQUIRE);
     uint32_t oldest = ring_oldest(head);
     if ((int32_t)(since - oldest) < 0 || (int32_t)(since - head) > 0) since = oldest;
-    if (head - since > (uint32_t)max) since = head - (uint32_t)max;   /* newest max, not oldest */
+    uint32_t end = head;
+    if (head - since > (uint32_t)max) {
+        if (oldest_first) end = since + (uint32_t)max;     /* the backlog, in order */
+        else since = head - (uint32_t)max;                 /* the newest max */
+    }
     int n = 0;
-    for (uint32_t s = since; s != head; s++) out[n++] = s_ring[s & mask];
+    for (uint32_t s = since; s != end; s++) out[n++] = s_ring[s & mask];
 
     /* Anything the writer reached during the copy is gone: drop it from the front. */
     uint32_t valid = ring_oldest(__atomic_load_n(&s_seq, __ATOMIC_ACQUIRE));
@@ -355,7 +361,8 @@ int acq_read_since(uint32_t since, acq_sample_t *out, int max, uint32_t *next_se
         memmove(out, out + drop, sizeof(*out) * (size_t)(n - drop));
         n -= drop;
     }
-    if (next_seq) *next_seq = head;
+    if (next_seq) *next_seq = end;
+    if (pending) *pending = __atomic_load_n(&s_seq, __ATOMIC_ACQUIRE) - end;
     return n;
 }
 

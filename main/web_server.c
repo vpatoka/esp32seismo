@@ -768,8 +768,11 @@ static esp_err_t api_acq_handler(httpd_req_t *req)
     return r;
 }
 
-/* GET /api/wave?since=SEQ&max=N  ->  newest samples after SEQ, chunked JSON.
- * The page polls with the "next" value it got back. t0 is the UTC time of
+/* GET /api/wave?since=SEQ&max=N[&order=newest|oldest]  ->  samples from SEQ
+ * on, chunked JSON. With more than N waiting, order=newest (default) sends
+ * the newest N and skips the rest (live display); order=oldest sends the
+ * oldest N still held and "pending" says how many follow (recorder catching
+ * up). The page polls with the "next" value it got back. t0 is the UTC time of
  * the first sample in ms (0 = no wall-clock time yet). A seq jump or an
  * epoch change means a gap; the page draws a break there. flags[] holds
  * ACQ_F_* per sample: the FIR window of that sample held a lost, corrupt,
@@ -779,28 +782,33 @@ static esp_err_t api_acq_handler(httpd_req_t *req)
 static esp_err_t api_wave_handler(httpd_req_t *req)
 {
     if (!web_auth_ok(req)) return ESP_OK;
-    char q[64] = "", v[16];
+    char q[96] = "", v[16];
     uint32_t since = 0;
     int max = 400;
+    bool oldest = false;
     if (httpd_req_get_url_query_str(req, q, sizeof(q)) == ESP_OK) {
         if (httpd_query_key_value(q, "since", v, sizeof(v)) == ESP_OK) since = (uint32_t)strtoul(v, NULL, 10);
         if (httpd_query_key_value(q, "max", v, sizeof(v)) == ESP_OK) max = atoi(v);
+        if (httpd_query_key_value(q, "order", v, sizeof(v)) == ESP_OK) {
+            if (strcmp(v, "oldest") == 0) oldest = true;
+            else if (strcmp(v, "newest") != 0) return send_json_err(req, "order: newest or oldest");
+        }
     }
     if (max < 1) max = 1;
     if (max > WAVE_MAX) max = WAVE_MAX;
 
     acq_sample_t *s = malloc(sizeof(acq_sample_t) * (size_t)max);
     if (!s) return send_json_err(req, "no memory");
-    uint32_t next = 0;
-    int cnt = acq_read_since(since, s, max, &next);
+    uint32_t next = 0, pending = 0;
+    int cnt = acq_read_since(since, s, max, oldest, &next, &pending);
     acq_status_t st;
     acq_get_status(&st);
 
     set_json_headers(req);
     char line[160];
-    snprintf(line, sizeof(line), "{\"ok\":true,\"next\":%lu,\"seq0\":%lu,\"n\":%d,\"fs\":%.4f,\"t0\":%lld",
-             (unsigned long)next, (unsigned long)(cnt ? s[0].seq : next), cnt, st.fs_out,
-             (long long)(cnt ? s[0].utc_us / 1000 : 0));
+    snprintf(line, sizeof(line), "{\"ok\":true,\"next\":%lu,\"seq0\":%lu,\"n\":%d,\"pending\":%lu,\"fs\":%.4f,\"t0\":%lld",
+             (unsigned long)next, (unsigned long)(cnt ? s[0].seq : next), cnt, (unsigned long)pending,
+             st.fs_out, (long long)(cnt ? s[0].utc_us / 1000 : 0));
     httpd_resp_send_chunk(req, line, HTTPD_RESP_USE_STRLEN);
 
     char chunk[512];

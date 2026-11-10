@@ -14,7 +14,7 @@ The API is the product. The web page is one client of it, and it gets no private
 | GET | `/` | Tuning page |
 | GET | `/api/status` | Firmware, time, 1 Hz reference, RTC, WiFi, faults, OTA state |
 | GET | `/api/acq` | Acquisition state and per-channel statistics |
-| GET | `/api/wave?since=SEQ&max=N` | Output samples newer than `SEQ` (N up to 1000, default 400) |
+| GET | `/api/wave?since=SEQ&max=N&order=newest\|oldest` | Output samples from `SEQ` on (N up to 1000, default 400; order default newest) |
 | POST | `/api/acq/cmd` | `cmd=sync`, `cmd=restart`, `cmd=mux&ch=N&mode=...`, `cmd=zero&ch=N` |
 | GET / POST | `/api/config` | Read or change settings |
 | GET | `/api/config/export` | Settings as `key=value` text |
@@ -75,7 +75,16 @@ curl 'http://vseismo/api/wave?since=0&max=5'
 - After a restart, output starts only once the FIR history holds settled data (taps + 3 input samples), so there's no ramp up from zero.
 - Poll again with `since=<next>`. If `seq0` isn't the `next` you asked for, there's a gap.
 - The station keeps the last `ring_len` output samples (see `/api/acq`): 131072 with PSRAM, about 22 minutes at 100 SPS, or 4096 (41 s) on a board without it.
-- One reply carries at most `max` samples, and when more are waiting it returns the newest `max`, not the oldest. That suits a live display. A client that falls more than `max` samples behind skips the older ones, even if the ring still holds them; poll at least every `max / fs` seconds (10 s at 100 SPS with `max=1000`) to get every sample.
+- One reply carries at most `max` samples. `order` picks which ones when more are waiting:
+  - `order=newest` (the default): the newest `max`. The rest are skipped, which suits a live display.
+  - `order=oldest`: the oldest `max` the ring still holds, in order. Nothing is skipped. `pending` says how many newer samples follow, so a recorder polls again at once while `pending` is above 0. After an outage it can catch up on the whole ring, up to 22 minutes at 100 SPS, in steps of `max`.
+- `pending` is the number of samples newer than the last one returned. With `order=newest` it is normally 0.
+- Any other `order` value is an error.
+
+```
+curl 'http://vseismo/api/wave?since=118000&max=1000&order=oldest'
+{"ok":true,"next":119000,"seq0":118000,"n":1000,"pending":5321,...}
+```
 
 ## /api/acq counters
 
