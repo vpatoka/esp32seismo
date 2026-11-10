@@ -15,7 +15,7 @@ It follows the esp32nixie carrier board pattern: one generator script, hand-plac
 > The drawings are hand placed. `seismo-carrier.net` comes from the same parts list and is the starting point for layout. Before ordering, take these from the vendor drawings:
 > - the DevKit outline and header rows, from Espressif's Dimensions v1.2 DXF
 > - the Click outline and mikroBUS row spacing, from MikroE
-> - the CB3LV land pattern, from the CTS datasheet
+> - the CB3LV footprint in `seismo.pretty`, drawn from the CTS Rev H land pattern, against the part in hand
 > - the ZS-042 header position, from the module in hand
 
 ## Files
@@ -27,6 +27,7 @@ In this folder:
 | `seismo-carrier-schematic.svg` | Schematic, net-label style, sections A to G |
 | `seismo-carrier-pcb.svg` | Placement, zones, layout rules (no routing) |
 | `seismo-carrier.net` | KiCad netlist (s-expression) for Pcbnew Import Netlist |
+| `seismo.pretty/`, `fp-lib-table` | Project footprint library `seismo:` (Y1, the CB3LV), picked up when the KiCad project lives in this folder |
 | [Netlist](#netlist) below | Net table, generated |
 | [Footprints](#footprints) below | KiCad footprint per part, generated |
 | `gen_seismo_carrier.py` | Source of all of the above: `python3 gen_seismo_carrier.py .` |
@@ -55,7 +56,7 @@ flowchart LR
 
 - **One block per channel.** Each EQAMP channel has a 2-pin input from its geophone (into the LT1007) and a 2-pin output (signal and ground). The carrier keeps each output pair intact all the way to the ADC: the signal goes through the divider to AINx+, and that channel's own ground return goes to AINx−. That's a pseudo-differential input per channel.
 - **One adapter.** An 18 to 24 V DC adapter feeds the EQAMP J7. The carrier takes the EQAMP's J8, the raw DC after its bridge rectifier and before its LM7812 / LM2574 regulators (about 15 to 27 V). Never J9: that's the amplifier's own regulated ±12 V analog supply.
-- **Ground.** The J8 power return joins the EQAMP and carrier grounds. The channel ground returns (P2-2, P3-2) still go to each channel's AINx−, so the few mV across the power return cancel in the ADC. R30, the old single link, is DNP by default.
+- **Ground.** The J8 power return joins the EQAMP and carrier grounds. Each channel's ground return is its own net, `AMP_GND_Z` (P2-2 to P4-2) and `AMP_GND_H` (P3-2 to P5-1), and goes only to that channel's AINx−, so the few mV across the power return cancel in the ADC. The two meet at the EQAMP, not on the carrier. The optional links R30 and R34 are DNP by default.
 - **Two 3.3 V rails, on purpose:**
   - `+3V3` is the DevKit's own LDO. That regulator also feeds the ESP32 radio, so the rail carries WiFi transmit bursts. On the carrier it only feeds the DS3231, the pull-ups and the spare terminal.
   - `+3V3A` is a dedicated quiet rail: 5 V through FB1 into U2. It feeds only the Click and Y1. The Click ties the ADC's AVDD and DVDD to its mikroBUS 3.3V pin, so whatever sits on that pin reaches the analog front end.
@@ -135,7 +136,7 @@ Generated. The same data as `seismo-carrier.net`.
 
 | Net | Members |
 |---|---|
-| GND | C1-2, C2-2, C3-2, C4-2, C5-2, C6-2, C7-2, C12-2, C13-2, D1-2, J1-15, J2-6, J3-1, J3-12, J3-15, J4-8, J5-8, LED1-1, P1-2, P6-2, P7-2, P8-4, R30-2, R43-2, TP5-1, U1-2, U2-2, Y1-2 |
+| GND | C1-2, C2-2, C3-2, C4-2, C5-2, C6-2, C7-2, C12-2, C13-2, D1-2, J1-15, J2-6, J3-1, J3-12, J3-15, J4-8, J5-8, LED1-1, P1-2, P6-2, P7-2, P8-4, R30-2, R34-2, R43-2, TP5-1, U1-2, U2-2, Y1-2 |
 | +3V3 | C13-1, J1-1, J2-5, P8-3, R40-2, R41-2, R44-2, TP3-1 |
 | +3V3A | C5-1, C6-1, C7-1, C12-1, J4-7, R31-2, TP4-1, U2-1, Y1-4 |
 | +5V | C2-1, C3-1, D2-2, FB1-1, P7-1, R1-1, TP2-1, U1-3 |
@@ -152,7 +153,8 @@ Generated. The same data as `seismo-carrier.net`.
 | ADC_SCK | J4-4, R10-2 |
 | AIN0P | C10-1, P4-1, R20-2, R21-1 |
 | AIN1P | C11-1, P5-2, R22-2, R23-1 |
-| AMP_GND | C10-2, C11-2, P2-2, P3-2, P4-2, P5-1, R21-2, R23-2, R30-1 |
+| AMP_GND_H | C11-2, P3-2, P5-1, R23-2, R34-1 |
+| AMP_GND_Z | C10-2, P2-2, P4-2, R21-2, R30-1 |
 | AMP_H | P3-1, R22-1 |
 | AMP_Z | P2-1, R20-1 |
 | CLKIN | P6-1, R33-2, TP6-1 |
@@ -189,11 +191,11 @@ MPNs carried over from the Nixie carrier BOM are marked "as Nixie". The rest are
 | DK1 | 1 | ESP32-C5-DevKitC-1-N8R8 | Espressif |
 | Click | 1 | ADC 15 Click | MIKROE-4890 |
 | RTC | 1 | ZS-042 DS3231 module | generic, DS3231SN preferred |
-| Y1 | 1 | 8.192 MHz 3.3 V HCMOS oscillator, 7 × 5 mm SMD, tri-state enable | CTS CB3LV-3I-8M192000 |
+| Y1 | 1 | 8.192 MHz 3.3 V HCMOS oscillator, ±50 ppm, −40 to +85 °C, 7 × 5 mm SMD, tri-state enable | CTS CB3LV-3I-8M192000 (ordering code checked, datasheet Rev H) |
 | U1 | 1 | 5 V 1.5 A switching regulator, 7805 pinout | OKI-78SR-5/1.5-W36-C (as Nixie) |
-| U2 | 1 | 3.3 V 100 mA LDO, TO-92 | LP2950ACZ-3.3 (verify part and pinout) |
+| U2 | 1 | 3.3 V 100 mA LDO, TO-92 (1 OUT, 2 GND, 3 IN) | LP2950ACZ-3.3 (pinout checked against the TI datasheet) |
 | F1 | 1 | PTC 0.5 A hold | RXEF050 (as Nixie) |
-| D1 | 1 | TVS 600 W, 25.6 V standoff (28.2 V for a 28 V adapter) | P6KE30A (P6KE33A for 28 V); verify |
+| D1 | 1 | TVS 600 W unidirectional, 28.2 V standoff | P6KE33A |
 | D2 | 1 | Schottky 1 A | 1N5817RLG (as Nixie) |
 | D3 | 1 | Schottky 1 A, reverse block | 1N5819RLG (as Nixie) |
 | FB1 | 1 | Axial ferrite bead on lead, about 70 Ω at 100 MHz, 3.5 × 4.45 mm body | Fair-Rite 2743001112 (confirmed, active) |
@@ -204,8 +206,9 @@ MPNs carried over from the Nixie carrier BOM are marked "as Nixie". The rest are
 | C10, C11 | 2 (buy 4) | 47 nF C0G/NP0, 25 V, ±10 %, radial 5.08 mm, 5.08 × 3.18 mm body | KEMET GoldMax 300 C0G, base C327C (Digi-Key listing checked, active) |
 | R20, R22 | 2 (buy 5+) | 9.1k ±0.1 % ±25 ppm/°C metal film, axial 1/4 W, 6.3 × 2.4 mm | Yageo MFP series (Digi-Key listing checked, active) |
 | R21, R23 | 2 (buy 5+) | 1.0k ±0.1 % ±25 ppm/°C metal film, axial 1/4 W, 6.3 × 2.4 mm | Yageo MFP series (Digi-Key listing checked, active) |
-| R10-R16, R32, R33 | 9 | 33 Ω 1/4 W (0 Ω links work too) | to choose |
-| R30 (DNP) | 1 | 10 Ω 1/4 W, fit only if hum | to choose |
+| R10, R11, R12, R14, R32, R33 | 6 | 33 Ω 1/4 W | to choose |
+| R13, R15, R16 | 3 | 330 Ω 1/4 W (CS, SYNC/RESET, CS2: not 0 Ω, see the design notes) | to choose |
+| R30, R34 (DNP) | 2 | 10 Ω 1/4 W, fit only if hum | to choose |
 | R1 | 1 | 2.2k 1/4 W | CF14JT2K20 (as Nixie) |
 | R31, R44 | 2 | 10k 1/4 W | CF14JT10K0 (as Nixie) |
 | R42 | 1 | 1k 1/4 W | CF14JT1K00 (as Nixie) |
@@ -233,23 +236,24 @@ PCB: JLCPCB or PCBWay, 2 layers, 130 × 90 mm, 1.6 mm, 1 oz, HASL.
   - The error is nearly the same on both channels, because the dividers match. Measure it once with the "Positive test level" and a known amplifier signal, and trim it with `chN_gcal`.
 
   The 47 nF also serves as the charge reservoir for each input sample. Keep C10 and C11 at the point where the pigtails leave the board, and keep P4 and P5 short.
-- **Ground link.** With power from J8, the power return already joins `AMP_GND` and `GND`, so R30 stays DNP. A second hard link would close a loop through the power cable. Fit 10 Ω only if hum shows up. Route each channel's ground return as its own trace, P2-2 to P4-2 and P3-2 to P5-1, not through the pour, and run the J8 cable bundled with the P2/P3 cables to keep the loop area small.
+- **Ground link.** With power from J8, the power return already joins the amplifier grounds and `GND`, so R30 (`AMP_GND_Z`) and R34 (`AMP_GND_H`) stay DNP. A second hard link would close a loop through the power cable. Fit 10 Ω in both only if hum shows up. Each channel's ground return is its own net, so the router keeps it as its own trace, P2-2 to P4-2 and P3-2 to P5-1, never through the pour and never joined on the carrier. Run the J8 cable bundled with the P2/P3 cables to keep the loop area small.
 - **+3V3A.** FB1, C4, U2 (LP2950, 100 mA, needs at least 1 µF on its output), C5 and C6.
   - Load is under 30 mA: the ADC, the LTC6903, the Click LED and Y1.
   - Both 3.3 V rails come from the same 5 V, so they rise together, and the Click's 4.7k pull-ups can't back-feed a DevKit that's off.
-- **33 Ω series resistors** sit at the driving end of every SPI and control line. They're cheap insurance, not a requirement:
-  - They soften edges and damp ringing on the socket-and-header path, which avoids double-counted clock edges.
-  - They limit current if one module is powered and the other isn't.
-
-  At 8 MHz on short traces it would very likely work without them, so 0 Ω links are fine.
+  - The reverse case does happen: the DevKit on USB with the adapter off. +3V3A is then 0 V while the firmware drives CS, SYNC/RESET and CS2 high and probes the ADC every 5 s. Those lines carry 330 Ω (below).
+- **Series resistors** sit at the driving end of every SPI and control line:
+  - 33 Ω on SCK, MOSI, MISO, DRDY and the clock paths (R10, R11, R12, R14, R32, R33). They soften edges and damp ringing on the socket-and-header path, which avoids double-counted clock edges. At 8 MHz on short traces it would very likely work without them, so 0 Ω links are fine there.
+  - 330 Ω on CS, SYNC/RESET and CS2 (R13, R15, R16). These idle high. With the DevKit on USB and the carrier unpowered they would otherwise back-power the Click through its input ESD diodes; 330 Ω keeps that under 10 mA per pin. Against the Click's 4.7k pull-ups a driven low still reads 0.22 V, far under the ADS131M02's 0.66 V limit, and the extra RC delay is a few ns on lines that switch once per frame. Don't replace these with 0 Ω.
 - **Y1, CTS CB3LV-3I-8M192000.** 8.192 MHz, 3.3 V HCMOS, 7 × 5 mm SMD. Pins: 1 enable (open or high = running, low = high impedance), 2 GND, 3 output, 4 VCC. R31 holds enable high, and C12 (100 nF, the datasheet asks for at least 10 nF) sits at pin 4. It's the only SMD part on the board, with large pads that are easy to hand-solder.
+  - Footprint `seismo:Oscillator_CTS_CB3LV_7.0x5.0mm` in `seismo.pretty`, from the CTS 008-0256-0 Rev H recommended pad layout: four 1.8 × 2.0 mm pads, 5.08 mm apart in X and 4.20 mm in Y, pin 1 bottom left, numbered anticlockwise. The generator writes it.
+  - It sits on +3V3A with the Click, on purpose: on the DevKit's 3.3 V it could drive CLKIN through 33 Ω into an unpowered ADC.
   - JP1 1-2 gives exactly 1000 SPS at OSR 4096 (firmware `clk_src=ext`).
   - JP1 2-3 uses GPIO7 LEDC (`clk_src=ledc`).
   - With the stock Click, leave JP1 open and P6 unwired, don't cut the trace, and set `clk_src=ltc6903`.
 - **1 Hz reference.** JP2 picks the DS3231 SQW or the GPS PPS. R44 is the pull-up the open-drain SQW needs. R42 protects GPIO23 from a 5 V PPS, and R43 (DNP) turns it into a 1k/2.2k divider if the GPS drives a 5 V PPS.
 - **ZS-042.** It has 4.7k pull-ups on SCL, SDA and SQW, so R40/R41 stay DNP. Its charge circuit (200 Ω and a diode from VCC) is meant for an LIR2032. With a plain CR2032, remove the diode.
 - **Power, from the EQAMP J8.** P1 takes the amplifier's raw DC, about 15 to 27 V. The carrier load sits ahead of the amplifier's LM7812 and LM2574, which regulate out the WiFi load steps.
-  - D1 is a P6KE30A (25.6 V standoff) for adapters up to 24 V. Use a P6KE33A (28.2 V) for a 28 V adapter. The old P6KE18A would conduct above about 17 V.
+  - D1 is a P6KE33A: 28.2 V standoff, above the 26.6 V J8 can reach, so it stays off across the whole input range. The P6KE30A (25.6 V) sat under that, and the old P6KE18A would conduct above about 17 V. At full surge current any of these clamps in the 40s of volts, above U1's 36 V rating; the PTC and the amplifier's bridge make that surge unlikely, but D1 alone doesn't guarantee U1 survives one.
   - C1 is rated 50 V, since J8 can reach about 26.6 V.
   - U1 takes 7 to 36 V. F1 is rated well above 30 V. D3 (40 V) is redundant behind the amplifier's bridge but harmless.
   - D1 sits after F1, so a sustained overvoltage trips the PTC.
@@ -262,7 +266,7 @@ PCB: JLCPCB or PCBWay, 2 layers, 130 × 90 mm, 1.6 mm, 1 oz, HASL.
 The station lives in an uninsulated shed, so expect −30 °C winter nights, 40 °C summer afternoons and condensation.
 
 - **Keep the CB3LV.** A quartz oscillator moves only tens of ppm across its rated range. The LTC6903 follows its own die temperature, which is exactly what a shed varies all day.
-  - Order the industrial grade (−40 to +85 °C). The "-3I" in CB3LV-3I-8M192000 should be that grade; confirm it in the CTS ordering-code table, because a 0 to 70 °C part is out of spec on a cold night.
+  - Order the industrial grade (−40 to +85 °C). In CB3LV-3I-8M192000, "3" is ±50 ppm and "I" is −40 to +85 °C (CTS ordering table, Rev H). A "C" part is −20 to +70 °C and out of spec on a cold night.
   - Expect about ±50 ppm over temperature. With GPS PPS or the DS3231 on JP2, the firmware measures and tracks the drift. Without a reference, it's up to about 4 s per day at the extremes.
 - **TCXO upgrade.** For long runs without GPS, an 8.192 MHz 3.3 V CMOS TCXO in the same 7 × 5 mm size gives about ±0.5 to 2.5 ppm. Check that its pins are 1 enable, 2 GND, 3 out, 4 VCC before swapping it onto the Y1 footprint.
 - **DS3231.** Use a ZS-042 with the DS3231SN (TCXO, ±2 ppm), not the DS3231M. An LIR2032 loses much of its capacity in hard frost, so a plain CR2032 with the charge diode removed is often the better winter choice.
@@ -338,7 +342,7 @@ Inside dimensions are estimates (1 to 1.5 cm lost per side to the walls and lid 
    - Click unmodified, JP1 open, `clk_src=ltc6903`: the console shows "ADC ok, ID 0x22xx".
    - Then cut the LTC6903 trace, wire P6 to the CLKIN pad, set JP1 1-2 and `clk_src=ext`.
 7. **P4 and P5 pigtails to the Click TB1 and TB2.** Short P2 and P3 (SIG to GND) and read the noise floor on the web page. It should match the "Shorted" mux reading.
-8. **EQAMP J8 to P1, channel outputs on P2 and P3.** Check that the EQAMP's ±12 V stays steady with WiFi busy, and check for hum. If hum shows up, fit R30 at 10 Ω.
+8. **EQAMP J8 to P1, channel outputs on P2 and P3.** Check that the EQAMP's ±12 V stays steady with WiFi busy, and check for hum. If hum shows up, fit R30 and R34 at 10 Ω.
 
 ## Footprints
 
@@ -357,7 +361,7 @@ Generated. KiCad footprint per part.
 | C11 | 47nF C0G | `Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm` | C0G/NP0 only |
 | C12 | 100nF | `Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm` | at Y1 pin 4, datasheet asks >= 10 nF |
 | C13 | 100nF | `Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm` | at J2 VCC |
-| D1 | P6KE30A | `Diode_THT:D_DO-15_P10.16mm_Horizontal` | TVS, 25.6 V standoff, cathode to +VIN; P6KE33A for a 28 V adapter |
+| D1 | P6KE33A | `Diode_THT:D_DO-15_P10.16mm_Horizontal` | TVS, unidirectional, 28.2 V standoff (J8 reaches about 26.6 V), cathode to +VIN |
 | D2 | 1N5817 | `Diode_THT:D_DO-41_SOD81_P10.16mm_Horizontal` |  |
 | D3 | 1N5819 | `Diode_THT:D_DO-41_SOD81_P10.16mm_Horizontal` | reverse-polarity block |
 | F1 | RXEF050 | `Capacitor_THT:C_Disc_D7.5mm_W5.0mm_P5.00mm` | footprint is a stand-in, check the RXEF050 drawing |
@@ -382,10 +386,10 @@ Generated. KiCad footprint per part.
 | R10 | 33R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
 | R11 | 33R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
 | R12 | 33R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | place at the Click |
-| R13 | 33R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
+| R13 | 330R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 330R: idles high, limits back-power into an unpowered Click |
 | R14 | 33R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | place at the Click |
-| R15 | 33R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
-| R16 | 33R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
+| R15 | 330R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 330R: idles high, limits back-power into an unpowered Click |
+| R16 | 330R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 330R: idles high, limits back-power into an unpowered Click |
 | R20 | 9.1k 0.1% | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 0.1 %, 25 ppm metal film |
 | R21 | 1.0k 0.1% | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 0.1 %, 25 ppm metal film |
 | R22 | 9.1k 0.1% | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 0.1 %, 25 ppm metal film |
@@ -394,6 +398,7 @@ Generated. KiCad footprint per part.
 | R31 | 10k | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
 | R32 | 33R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
 | R33 | 33R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
+| R34 | 10R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | DNP by default: the J8 power return joins the grounds; fit only if hum |
 | R40 | 4.7k | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | DNP: ZS-042 has its own |
 | R41 | 4.7k | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | DNP: ZS-042 has its own |
 | R42 | 1k | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
@@ -407,7 +412,7 @@ Generated. KiCad footprint per part.
 | TP6 | CLKIN | `Connector_PinHeader_2.54mm:PinHeader_1x01_P2.54mm_Vertical` |  |
 | U1 | OKI-78SR-5/1.5-W36-C | `Converter_DCDC:Converter_DCDC_Murata_OKI-78SR_Vertical` | pins IN-GND-OUT; check caps against the Murata datasheet |
 | U2 | LP2950ACZ-3.3 | `Package_TO_SOT_THT:TO-92_Inline` | TO-92 1 OUT, 2 GND, 3 IN; verify against the datasheet |
-| Y1 | CB3LV-3I-8M192000 | `seismo:Oscillator_CTS_CB3LV_7.0x5.0mm` | CTS 8.192 MHz 3.3 V HCMOS, 1 EN 2 GND 3 OUT 4 VCC; project footprint from the CB3LV land pattern |
+| Y1 | CB3LV-3I-8M192000 | `seismo:Oscillator_CTS_CB3LV_7.0x5.0mm` | CTS 8.192 MHz 3.3 V HCMOS, +-50 ppm, -40..85 C, 1 EN 2 GND 3 OUT 4 VCC; footprint in seismo.pretty, CTS 008-0256-0 Rev H land pattern |
 
 ## Firmware impact
 
@@ -415,12 +420,13 @@ None. The carrier matches [`main/io_map.h`](../../main/io_map.h). Settings that 
 
 ## Open items
 
-- A KiCad footprint for the CB3LV. The netlist names a project footprint, `seismo:Oscillator_CTS_CB3LV_7.0x5.0mm`, to draw from the CTS land pattern. One copy of the datasheet is titled 7.5 × 5 mm, so check the revision.
-- Verify the LP2950ACZ-3.3 TO-92 pinout.
+- Check the generated CB3LV footprint in the KiCad footprint viewer and against a printed 1:1 part. It follows CTS Rev H (7.0 × 5.0 mm); one older copy of the datasheet is titled 7.5 × 5 mm.
+- The OKI-78SR pin order (1 IN, 2 GND, 3 OUT) comes from KiCad's own symbol and footprint pair; check it against the Murata drawing.
+- The ADC 15 Click is listed as out of stock at MikroE and retired at SparkFun: buy a spare, or plan an on-board ADS131M02 for rev B.
 - The Click outline, the mikroBUS row spacing and the CLKIN pad position, from the MikroE drawing.
 - DevKit revision (v1.1 or v1.2) and the J1/J3 pinout on the board in hand.
 - The ZS-042 header position relative to its mounting hole, for a 1:1 fit.
-- KiCad: import, footprint check (F1 and FB1 are stand-ins, Y1 is a project footprint), routing, DRC.
+- KiCad: create the project in this folder so `fp-lib-table` loads `seismo.pretty`, then import, footprint check (F1 and FB1 are stand-ins), routing, DRC.
 
 ## Related
 

@@ -6,8 +6,9 @@ Usage: python3 gen_seismo_carrier.py <outdir>
 
 Outputs: seismo-carrier-schematic.svg, seismo-carrier-pcb.svg,
 seismo-carrier.net (KiCad netlist, for Pcbnew "Import Netlist"),
-"Seismo Carrier Netlist.md" and "Seismo Carrier Footprints.md" (Obsidian
-notes, embedded in the carrier note). The drawings are hand placed; the
+seismo.pretty/ and fp-lib-table (the project footprint library the netlist
+refers to as "seismo:"), "Seismo Carrier Netlist.md" and "Seismo Carrier
+Footprints.md" (Obsidian notes, embedded in the carrier note). The drawings are hand placed; the
 netlist comes from PARTS at the bottom. When a connection changes, change
 both and regenerate. Drawing helpers are the ones from the Nixie carrier
 generator, so both boards read the same way.
@@ -22,6 +23,12 @@ NET = "#0645ad"
 PWR = "#b00020"
 GRY = "#666"
 FONT = "font-family='DejaVu Sans Mono, Consolas, monospace'"
+
+# Series resistors on the DevKit-to-Click lines: one table for the drawing
+# and the netlist. 330R on the lines that idle high (CS, RST, CS2) limits
+# back-power into an unpowered Click to under 10 mA per pin.
+SERIES_R = {"R10": "33R", "R11": "33R", "R12": "33R", "R13": "330R", "R14": "33R",
+            "R15": "330R", "R16": "330R"}
 
 
 class Svg:
@@ -210,7 +217,7 @@ def panel(s, x, y, w, h, title):
 
 
 # ══ SCHEMATIC ═════════════════════════════════════════════════════════════
-S = Svg(1960, 1820, "VSEISMO carrier board, schematic rev A (design reference, not for fabrication)")
+S = Svg(1960, 1880, "VSEISMO carrier board, schematic rev A (design reference, not for fabrication)")
 S.text(20, 58, "Net-label style: same blue label = same net. Pin numbers in grey. "
        "Power comes from the EQAMP J8 (raw DC), so the power return already joins AMP_GND and GND.", 13, c=GRY)
 
@@ -266,10 +273,10 @@ netlab(S, 720, ya, "+3V3A")
 S.text(560, 130, "One adapter (18-24 V DC) feeds the EQAMP. P1 takes", 11, c=GRY)
 S.text(560, 144, "its J8 raw DC (after its bridge, before its", 11, c=GRY)
 S.text(560, 158, "regulators): about 15-27 V. Never its J9 +-12 V.", 11, c=GRY)
-S.text(560, 180, "D1 P6KE30A (25.6 V standoff) for adapters up to", 11, c=GRY)
-S.text(560, 194, "24 V; P6KE33A for 28 V. D3 is redundant behind", 11, c=GRY)
-S.text(560, 208, "the amp bridge but harmless.", 11, c=GRY)
-S.text(40, 492, "D2: the DevKit never fights its own USB 5 V.  +3V3A feeds only the Click (AVDD = DVDD there).", 11, c=GRY)
+S.text(560, 180, "D1 P6KE33A (28.2 V standoff) stays off across the", 11, c=GRY)
+S.text(560, 194, "whole J8 range. D3 is redundant behind the amp", 11, c=GRY)
+S.text(560, 208, "bridge but harmless.", 11, c=GRY)
+S.text(40, 492, "D2: the DevKit never fights its own USB 5 V.  +3V3A feeds only the Click (AVDD = DVDD there) and Y1.", 11, c=GRY)
 
 # ── B: DevKit ─────────────────────────────────────────────────────────────
 panel(S, 940, 80, 1000, 620, "B. ESP32-C5-DevKitC-1 v1.2 (DK1) on two 1x16 female headers")
@@ -307,7 +314,7 @@ for no, (ref, esp, adc) in {2: ("R15", "G0_SYNC", "ADC_RST"), 3: ("R13", "G10_CS
                             4: ("R10", "G6_SCK", "ADC_SCK"), 5: ("R12", "G9_MISO", "ADC_MISO"),
                             6: ("R11", "G8_MOSI", "ADC_MOSI")}.items():
     x, y = cp[f"L{no}"]
-    res_h(S, 320, y, ref, "33R", length=110)
+    res_h(S, 320, y, ref, SERIES_R[ref], length=110)
     S.line(430, y, x, y)
     netlab(S, 320, y, esp, side="l")
 x, y = cp["L1"]; S.text(x - 4, y + 4, "x", 13, anchor="end")
@@ -316,27 +323,31 @@ S.dot(420, y); cap_v(S, 420, y, "C7", "100nF", length=40); gnd(S, 420, y + 40)
 x, y = cp["L8"]; S.line(x, y, x - 20, y); gnd(S, x - 20, y)
 for no, (ref, esp) in {1: ("R16", "G24_CS2"), 2: ("R14", "G1_DRDY")}.items():
     x, y = cp[f"R{no}"]
-    res_h(S, x, y, ref, "33R", length=100)
+    res_h(S, x, y, ref, SERIES_R[ref], length=100)
     netlab(S, x + 100, y, esp)
 for no in (3, 4, 5, 6):
     x, y = cp[f"R{no}"]; S.text(x + 4, y + 4, "x", 13)
 x, y = cp["R7"]; S.text(x + 4, y + 4, "x  not fed: the Click runs on 3.3V", 11, c=GRY)
 x, y = cp["R8"]; S.line(x, y, x + 20, y); gnd(S, x + 20, y)
-S.text(40, 940, "33R series resistors sit at the driving end: R10, R11, R13, R15, R16 next to the DevKit,", 11, c=GRY)
-S.text(40, 954, "R12 (MISO) and R14 (DRDY) next to the Click. The Click has its own 4.7k pull-ups on RST, CS,", 11, c=GRY)
-S.text(40, 968, "PWM (CS2) and INT (DRDY), all to its VCC = +3V3A. PWM drives the LTC6903 SEN pin.", 11, c=GRY)
-S.text(40, 990, "The analog inputs are NOT on mikroBUS: they are the Click's own TB1 / TB2 screw terminals,", 11, c=PWR)
-S.text(40, 1004, "wired from P4 and P5 (section D). CLKIN comes from P6 (section E) after the trace cut.", 11, c=PWR)
-S.text(40, 1026, "mikroBUS sockets: 2 x 1x8, 22.86 mm row spacing. Check against the MikroE mikroBUS spec", 11, c=GRY)
-S.text(40, 1040, "and the ADC 15 Click drawing before ordering.", 11, c=GRY)
+S.text(40, 926, "Series resistors sit at the driving end: R10, R11, R13, R15, R16 next to the DevKit, R12 (MISO)", 11, c=GRY)
+S.text(40, 940, "and R14 (DRDY) next to the Click. 330R on the slow lines CS, RST and CS2 (R13, R15, R16): they idle", 11, c=GRY)
+S.text(40, 954, "high, so with the DevKit on USB and the carrier off they would back-power the Click through its", 11, c=GRY)
+S.text(40, 968, "ESD diodes; 330R keeps that under 10 mA per pin. Low level against the Click's 4.7k pull-ups: 0.22 V.", 11, c=GRY)
+S.text(40, 982, "The Click's 4.7k pull-ups on RST, CS, PWM (CS2) and INT go to its VCC = +3V3A. PWM drives the LTC6903 SEN.", 11, c=GRY)
+S.text(40, 1000, "The analog inputs are NOT on mikroBUS: they are the Click's own TB1 / TB2 screw terminals,", 11, c=PWR)
+S.text(40, 1014, "wired from P4 and P5 (section D). CLKIN comes from P6 (section E) after the trace cut.", 11, c=PWR)
+S.text(40, 1036, "mikroBUS sockets: 2 x 1x8, 22.86 mm row spacing. Check against the MikroE mikroBUS spec", 11, c=GRY)
+S.text(40, 1050, "and the ADC 15 Click drawing before ordering.", 11, c=GRY)
 
 # ── D: analog front end ───────────────────────────────────────────────────
-panel(S, 20, 1100, 900, 470, "D. Analog front end: one block per EQAMP channel, +-10 V to +-0.99 V, to the Click")
+panel(S, 20, 1100, 900, 530, "D. Analog front end: one block per EQAMP channel, +-10 V to +-0.99 V, to the Click")
 S.text(40, 1142, "Each EQAMP channel output is a 2-pin pair (signal, ground). Each one keeps its pair all the way to", 11, c=GRY)
 S.text(40, 1156, "its ADC input: signal through the divider to AINx+, the channel's own ground return to AINx-.", 11, c=GRY)
-CH = (("P2", "CH1 vertical (Z)", "R20", "R21", "C10", "AIN0P", "P4", "TO CLICK TB1", ["AIN0+", "AIN0-"], 0),
-      ("P3", "CH2 horizontal (H)", "R22", "R23", "C11", "AIN1P", "P5", "TO CLICK TB2", ["AIN1-", "AIN1+"], 1))
-for i, (pin_ref, title, rs, rp, cc, node, out_ref, out_title, out_pins, sig_at) in enumerate(CH):
+CH = (("P2", "CH1 vertical (Z)", "R20", "R21", "C10", "AIN0P", "P4", "TO CLICK TB1", ["AIN0+", "AIN0-"], 0,
+       "AMP_GND_Z", "R30"),
+      ("P3", "CH2 horizontal (H)", "R22", "R23", "C11", "AIN1P", "P5", "TO CLICK TB2", ["AIN1-", "AIN1+"], 1,
+       "AMP_GND_H", "R34"))
+for i, (pin_ref, title, rs, rp, cc, node, out_ref, out_title, out_pins, sig_at, agnd, rlink) in enumerate(CH):
     y0 = 1200 + i * 185
     pi = terminal(S, 100, y0, pin_ref, title, ["SIG", "GND"], pitch=40)
     po = terminal(S, 760, y0, out_ref, out_title, out_pins, side="l", pitch=40)
@@ -350,13 +361,14 @@ for i, (pin_ref, title, rs, rp, cc, node, out_ref, out_title, out_pins, sig_at) 
     xs, ys = po[sig_at]
     S.line(600, ysig, 600, ys); S.line(600, ys, xs, ys)
     xg, yg = po[1 - sig_at]
-    S.line(xg, yg, 700, yg); netlab(S, 700, yg, "AMP_GND", side="l")
-    S.line(pi[1][0], ygnd, 160, ygnd); S.line(160, ygnd, 160, rail); S.line(160, rail, 520, rail)
-    netlab(S, 520, rail, "AMP_GND")
-    if i == 0:
-        S.dot(240, rail); res_v(S, 240, rail, "R30", "10R", length=34, dnp=True); gnd(S, 240, rail + 34)
-S.text(40, 1534, "R30 DNP: the J8 power return already joins AMP_GND and GND. Fit 10R only if hum shows up. Ratio 0.099:", 11, c=GRY)
-S.text(40, 1548, "+-10 V -> +-0.99 V. No clamp diodes: a clamp to GND would clip the negative half. TB2 is AIN1-, AIN1+ on the Click.", 11, c=GRY)
+    S.line(xg, yg, 690, yg); netlab(S, 690, yg, agnd, side="l")
+    S.line(pi[1][0], ygnd, 160, ygnd); S.line(160, ygnd, 160, rail); S.line(160, rail, 500, rail)
+    netlab(S, 500, rail, agnd)
+    S.dot(240, rail); res_v(S, 240, rail, rlink, "10R", length=34, dnp=True); gnd(S, 240, rail + 34)
+S.text(40, 1580, "AMP_GND_Z and AMP_GND_H are separate nets: each channel's ground return runs only from its input", 11, c=GRY)
+S.text(40, 1594, "terminal to its AINx-. They meet at the EQAMP. R30, R34 DNP: the J8 power return already joins amplifier", 11, c=GRY)
+S.text(40, 1608, "and carrier grounds; fit 10R only if hum shows up. Ratio 0.099: +-10 V -> +-0.99 V. No clamp diodes:", 11, c=GRY)
+S.text(40, 1622, "a clamp to GND would clip the negative half. TB2 is AIN1-, AIN1+ on the Click (MikroE schematic v100).", 11, c=GRY)
 
 # ── E: ADC clock ──────────────────────────────────────────────────────────
 panel(S, 940, 720, 1000, 360, "E. ADC clock: 8.192 MHz oscillator or ESP32 LEDC, to the Click CLKIN pad")
@@ -416,11 +428,11 @@ S.text(960, 1520, "JP2 1-2: DS3231 SQW, 2-3: GPS PPS. R43 makes a 1k/2.2k divide
 S.text(960, 1534, "P7 +5V powers the GPS module (u-blox class boards take 3.3-5 V).", 11, c=GRY)
 
 # ── G: spare, test points ─────────────────────────────────────────────────
-panel(S, 20, 1590, 1920, 200, "G. Spare GPIO, test points, mounting")
-terminal(S, 80, 1660, "P8", "SPARE", ["IO2", "IO3", "+3V3", "GND"], pitch=26)
-S.text(200, 1680, "IO2 and IO3 are strapping pins on some DevKit revisions: inputs or late outputs only.", 11, c=GRY)
-S.text(200, 1700, "Test points (1x40 header pieces): TP1 +VIN, TP2 +5V, TP3 +3V3, TP4 +3V3A, TP5 GND, TP6 CLKIN.", 11, c=GRY)
-S.text(200, 1720, "Four M3 holes, nylon standoffs. Board 130 x 90 mm, 2 layers.", 11, c=GRY)
+panel(S, 20, 1650, 1920, 200, "G. Spare GPIO, test points, mounting")
+terminal(S, 80, 1720, "P8", "SPARE", ["IO2", "IO3", "+3V3", "GND"], pitch=26)
+S.text(200, 1740, "IO2 and IO3 are strapping pins on some DevKit revisions: inputs or late outputs only.", 11, c=GRY)
+S.text(200, 1760, "Test points (1x40 header pieces): TP1 +VIN, TP2 +5V, TP3 +3V3, TP4 +3V3A, TP5 GND, TP6 CLKIN.", 11, c=GRY)
+S.text(200, 1780, "Four M3 holes, nylon standoffs. Board 130 x 90 mm, 2 layers.", 11, c=GRY)
 S.save("seismo-carrier-schematic.svg")
 
 # ══ PCB PLACEMENT ═════════════════════════════════════════════════════════
@@ -512,7 +524,7 @@ term(2, 9, 2, "P2", "CH1 Z")
 term(2, 23, 2, "P3", "CH2 H")
 box(17, 4, 7, 14, "R20-23", "0.1 %", c=NET, size=10)
 box(17, 20, 7, 6, "C10 C11", "C0G", c=NET, size=9)
-box(17, 29, 6, 3, "R30", "", c=NET, size=9)
+box(17, 29, 9, 3, "R30 R34", "", c=NET, size=9)
 term(25.5, 3, 2, "P4", "to TB1", lab_side="b")
 term(25.5, 20, 2, "P5", "to TB2", lab_side="b")
 # ── Click
@@ -585,15 +597,16 @@ rules = [
     ("Layout rules", True),
     ("Bottom: solid GND pour, stitched to", False),
     ("  top GND fill, vias every ~10 mm.", False),
-    ("AMP_GND: per channel, from P2-2 / P3-2", False),
-    ("  to P4-2 / P5-1. R30 DNP (J8 joins).", False),
+    ("AMP_GND_Z: P2-2 to P4-2 only.", False),
+    ("AMP_GND_H: P3-2 to P5-1 only.", False),
+    ("  Own traces, not the pour. R30/R34 DNP.", False),
     ("No GND pour under R20-R23, C10-C11.", False),
     ("U1 loop small, far from the analog zone,", False),
     ("  the Click and the antenna.", False),
-    ("+3V3A: U2 to J4-7 only, 0.5 mm.", False),
+    ("+3V3A: U2 to J4-7 and Y1 only, 0.5 mm.", False),
     ("VIN, 5V: 1 mm. Signals 0.3 mm.", False),
     ("SPI and DRDY: short, over solid GND,", False),
-    ("  33R at the driving end.", False),
+    ("  series R at the driving end.", False),
     ("CLKIN: Y1 close to JP1 and P6.", False),
     ("Nothing under the DevKit antenna.", False),
     ("Terminal wire entry faces the edge.", False),
@@ -660,8 +673,8 @@ tb("P1", "DC IN EQAMP J8", ["+VIN_RAW", "GND"])
 part("F1", "RXEF050", FP_PTC, ("Device", "Polyfuse"), {1: "+VIN_RAW", 2: "+VIN_F"},
      "footprint is a stand-in, check the RXEF050 drawing")
 part("D3", "1N5819", FP_D, ("Device", "D_Schottky"), {1: "+VIN", 2: "+VIN_F"}, "reverse-polarity block")
-part("D1", "P6KE30A", "Diode_THT:D_DO-15_P10.16mm_Horizontal", ("Device", "D_TVS"),
-     {1: "+VIN", 2: "GND"}, "TVS, 25.6 V standoff, cathode to +VIN; P6KE33A for a 28 V adapter")
+part("D1", "P6KE33A", "Diode_THT:D_DO-15_P10.16mm_Horizontal", ("Device", "D_TVS"),
+     {1: "+VIN", 2: "GND"}, "TVS, unidirectional, 28.2 V standoff (J8 reaches about 26.6 V), cathode to +VIN")
 part("C1", "22uF 50V", FP_CP, ("Device", "C_Polarized"), {1: "+VIN", 2: "GND"})
 part("U1", "OKI-78SR-5/1.5-W36-C", "Converter_DCDC:Converter_DCDC_Murata_OKI-78SR_Vertical",
      ("Regulator_Switching", "OKI-78SR-5_1.5-W36-C"), {1: "+VIN", 2: "GND", 3: "+5V"},
@@ -692,32 +705,36 @@ part("J4", "Click mikroBUS 1-8", FP_SKT.format(n=8), ("Connector", "Conn_01x08_S
 part("J5", "Click mikroBUS 16-9", FP_SKT.format(n=8), ("Connector", "Conn_01x08_Socket"),
      {1: "ADC_CS2", 2: "ADC_DRDY", 8: "GND"},
      "pad 1 = PWM (16) .. pad 8 = GND (9); RX TX SCL SDA 5V not connected")
-res("R10", "33R", "G6_SCK", "ADC_SCK")
-res("R11", "33R", "G8_MOSI", "ADC_MOSI")
-res("R12", "33R", "ADC_MISO", "G9_MISO", "place at the Click")
-res("R13", "33R", "G10_CS", "ADC_CS")
-res("R14", "33R", "ADC_DRDY", "G1_DRDY", "place at the Click")
-res("R15", "33R", "G0_SYNC", "ADC_RST")
-res("R16", "33R", "G24_CS2", "ADC_CS2")
+res("R10", SERIES_R["R10"], "G6_SCK", "ADC_SCK")
+res("R11", SERIES_R["R11"], "G8_MOSI", "ADC_MOSI")
+res("R12", SERIES_R["R12"], "ADC_MISO", "G9_MISO", "place at the Click")
+res("R13", SERIES_R["R13"], "G10_CS", "ADC_CS", "330R: idles high, limits back-power into an unpowered Click")
+res("R14", SERIES_R["R14"], "ADC_DRDY", "G1_DRDY", "place at the Click")
+res("R15", SERIES_R["R15"], "G0_SYNC", "ADC_RST", "330R: idles high, limits back-power into an unpowered Click")
+res("R16", SERIES_R["R16"], "G24_CS2", "ADC_CS2", "330R: idles high, limits back-power into an unpowered Click")
 cap("C7", "100nF", "+3V3A", "GND", "at J4 pin 7")
 
 # D: analog front end
-tb("P2", "CH1 Z IN", ["AMP_Z", "AMP_GND"])
-tb("P3", "CH2 H IN", ["AMP_H", "AMP_GND"])
+# One ground net per channel: each return runs only from its input terminal
+# to its AINx-, and the two meet at the EQAMP, not on the carrier.
+tb("P2", "CH1 Z IN", ["AMP_Z", "AMP_GND_Z"])
+tb("P3", "CH2 H IN", ["AMP_H", "AMP_GND_H"])
 res("R20", "9.1k 0.1%", "AMP_Z", "AIN0P", "0.1 %, 25 ppm metal film")
-res("R21", "1.0k 0.1%", "AIN0P", "AMP_GND", "0.1 %, 25 ppm metal film")
-cap("C10", "47nF C0G", "AIN0P", "AMP_GND", "C0G/NP0 only")
+res("R21", "1.0k 0.1%", "AIN0P", "AMP_GND_Z", "0.1 %, 25 ppm metal film")
+cap("C10", "47nF C0G", "AIN0P", "AMP_GND_Z", "C0G/NP0 only")
 res("R22", "9.1k 0.1%", "AMP_H", "AIN1P", "0.1 %, 25 ppm metal film")
-res("R23", "1.0k 0.1%", "AIN1P", "AMP_GND", "0.1 %, 25 ppm metal film")
-cap("C11", "47nF C0G", "AIN1P", "AMP_GND", "C0G/NP0 only")
-tb("P4", "TO CLICK TB1", ["AIN0P", "AMP_GND"])
-tb("P5", "TO CLICK TB2", ["AMP_GND", "AIN1P"])
-res("R30", "10R", "AMP_GND", "GND", "DNP by default: the J8 power return joins the grounds; fit only if hum")
+res("R23", "1.0k 0.1%", "AIN1P", "AMP_GND_H", "0.1 %, 25 ppm metal film")
+cap("C11", "47nF C0G", "AIN1P", "AMP_GND_H", "C0G/NP0 only")
+tb("P4", "TO CLICK TB1", ["AIN0P", "AMP_GND_Z"])        # Click TB1: 1 AIN0+, 2 AIN0-
+tb("P5", "TO CLICK TB2", ["AMP_GND_H", "AIN1P"])        # Click TB2: 1 AIN1-, 2 AIN1+
+res("R30", "10R", "AMP_GND_Z", "GND", "DNP by default: the J8 power return joins the grounds; fit only if hum")
+res("R34", "10R", "AMP_GND_H", "GND", "DNP by default: the J8 power return joins the grounds; fit only if hum")
 
 # E: ADC clock
 part("Y1", "CB3LV-3I-8M192000", "seismo:Oscillator_CTS_CB3LV_7.0x5.0mm", ("Oscillator", "ASE-xxxMHz"),
      {1: "XO_EN", 2: "GND", 3: "XO_OUT", 4: "+3V3A"},
-     "CTS 8.192 MHz 3.3 V HCMOS, 1 EN 2 GND 3 OUT 4 VCC; project footprint from the CB3LV land pattern")
+     "CTS 8.192 MHz 3.3 V HCMOS, +-50 ppm, -40..85 C, 1 EN 2 GND 3 OUT 4 VCC; footprint in seismo.pretty, "
+     "CTS 008-0256-0 Rev H land pattern")
 cap("C12", "100nF", "+3V3A", "GND", "at Y1 pin 4, datasheet asks >= 10 nF")
 res("R31", "10k", "XO_EN", "+3V3A")
 res("R32", "33R", "G7_LEDC", "LEDC_CLK")
@@ -820,4 +837,66 @@ for ref, val, fp, _s, _p, note in sorted(PARTS, key=lambda p: natkey(p[0])):
 with open(os.path.join(OUT, "Seismo Carrier Footprints.md"), "w") as f:
     f.write("\n".join(md) + "\n")
 
-print(f"ok: {len(PARTS)} parts, {len(nets)} nets")
+# ── project footprint library: seismo.pretty + fp-lib-table ───────────────
+# Y1, CTS CB3/CB3LV 7.0 x 5.0 mm. Land pattern from CTS 008-0256-0 Rev H,
+# "Recommended Pad Layout": four 1.8 x 2.0 mm pads, 5.08 mm apart in X and
+# 4.20 mm in Y; top view, pin 1 bottom left, numbered anticlockwise (2 bottom
+# right, 3 top right, 4 top left, next to the bypass capacitor).
+def kicad_fp_cb3lv():
+    name = "Oscillator_CTS_CB3LV_7.0x5.0mm"
+    px, py, pw, ph = 2.54, 2.10, 1.8, 2.0
+    pads = {1: (-px, py), 2: (px, py), 3: (px, -py), 4: (-px, -py)}
+
+    def line(x1, y1, x2, y2, layer, w):
+        return (f"  (fp_line (start {x1:g} {y1:g}) (end {x2:g} {y2:g}) "
+                f"(stroke (width {w:g}) (type solid)) (layer \"{layer}\"))")
+
+    def text(kind, txt, x, y, layer):
+        return (f"  (fp_text {kind} \"{txt}\" (at {x:g} {y:g}) (layer \"{layer}\")\n"
+                f"    (effects (font (size 1 1) (thickness 0.15))))")
+
+    o = [f"(footprint \"{name}\" (version 20221018) (generator gen_seismo_carrier)",
+         "  (layer \"F.Cu\")",
+         "  (descr \"CTS CB3/CB3LV 7.0x5.0 mm SMD clock oscillator, 4 pads, land pattern from CTS 008-0256-0 Rev H\")",
+         "  (tags \"oscillator CTS CB3 CB3LV 7050 SMD\")",
+         "  (attr smd)",
+         text("reference", "REF**", 0, -4.3, "F.SilkS"),
+         text("value", name, 0, 4.3, "F.Fab"),
+         text("user", "${REFERENCE}", 0, 0, "F.Fab")]
+    # Fab: 7.0 x 5.0 body, pin 1 corner chamfered (bottom left).
+    fab = [(-3.5, -2.5), (3.5, -2.5), (3.5, 2.5), (-2.5, 2.5), (-3.5, 1.5), (-3.5, -2.5)]
+    for (x1, y1), (x2, y2) in zip(fab, fab[1:]):
+        o.append(line(x1, y1, x2, y2, "F.Fab", 0.1))
+    # Silk: body edges where they clear the pads by 0.2 mm, plus a pin 1 dot.
+    sx = px - pw / 2 - 0.2          # 1.44
+    sy = py - ph / 2 - 0.2          # 0.90
+    for y in (-2.61, 2.61):
+        o.append(line(-sx, y, sx, y, "F.SilkS", 0.12))
+    for x in (-3.61, 3.61):
+        o.append(line(x, -sy, x, sy, "F.SilkS", 0.12))
+    o.append("  (fp_circle (center -4.05 2.1) (end -3.85 2.1) (stroke (width 0.12) (type solid)) "
+             "(fill solid) (layer \"F.SilkS\"))")
+    # Courtyard around pads, body and the pin 1 dot.
+    for (x1, y1), (x2, y2) in (((-4.4, -3.4), (3.95, -3.4)), ((3.95, -3.4), (3.95, 3.4)),
+                               ((3.95, 3.4), (-4.4, 3.4)), ((-4.4, 3.4), (-4.4, -3.4))):
+        o.append(line(x1, y1, x2, y2, "F.CrtYd", 0.05))
+    for n, (x, y) in pads.items():
+        o.append(f"  (pad \"{n}\" smd rect (at {x:g} {y:g}) (size {pw:g} {ph:g}) "
+                 f"(layers \"F.Cu\" \"F.Paste\" \"F.Mask\"))")
+    o.append(")")
+    return name, "\n".join(o) + "\n"
+
+
+fp_dir = os.path.join(OUT, "seismo.pretty")
+os.makedirs(fp_dir, exist_ok=True)
+fp_name, fp_text = kicad_fp_cb3lv()
+with open(os.path.join(fp_dir, fp_name + ".kicad_mod"), "w") as f:
+    f.write(fp_text)
+with open(os.path.join(OUT, "fp-lib-table"), "w") as f:
+    f.write("(fp_lib_table\n  (version 7)\n"
+            "  (lib (name \"seismo\")(type \"KiCad\")(uri \"${KIPRJMOD}/seismo.pretty\")(options \"\")"
+            "(descr \"VSEISMO carrier project footprints\"))\n)\n")
+used = {fp.split(":")[1] for _r, _v, fp, _s, _p, _n in PARTS if fp.startswith("seismo:")}
+assert used == {fp_name}, f"seismo: footprints used {used}, generated {fp_name}"
+
+print(f"ok: {len(PARTS)} parts, {len(nets)} nets, footprint seismo:{fp_name}")

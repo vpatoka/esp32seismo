@@ -83,8 +83,8 @@
 <rect x='186.0' y='270.0' width='56.0' height='48.0' rx='0' stroke='#0645ad' stroke-width='1.6' fill='#fff'/>
 <text x='214.0' y='292.0' font-size='9' fill='#0645ad' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>C10 C11</text>
 <text x='214.0' y='306.0' font-size='9' fill='#666' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace'>C0G</text>
-<rect x='186.0' y='342.0' width='48.0' height='24.0' rx='0' stroke='#0645ad' stroke-width='1.6' fill='#fff'/>
-<text x='210.0' y='358.0' font-size='9' fill='#0645ad' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>R30</text>
+<rect x='186.0' y='342.0' width='72.0' height='24.0' rx='0' stroke='#0645ad' stroke-width='1.6' fill='#fff'/>
+<text x='222.0' y='358.0' font-size='9' fill='#0645ad' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>R30 R34</text>
 <rect x='254.0' y='134.0' width='64.0' height='81.28' rx='0' stroke='#2e7d32' stroke-width='1.6' fill='#e8f5e9'/>
 <circle cx='286.0' cy='154.32' r='9' stroke='#2e7d32' stroke-width='1.4' fill='#fff'/>
 <text x='286.0' y='158.32' font-size='9' fill='#2e7d32' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace'>1</text>
@@ -278,32 +278,33 @@
 <text x='1120.0' y='116' font-size='13' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>Layout rules</text>
 <text x='1120.0' y='136' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Bottom: solid GND pour, stitched to</text>
 <text x='1120.0' y='152' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  top GND fill, vias every ~10 mm.</text>
-<text x='1120.0' y='168' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>AMP_GND: per channel, from P2-2 / P3-2</text>
-<text x='1120.0' y='184' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  to P4-2 / P5-1. R30 DNP (J8 joins).</text>
-<text x='1120.0' y='200' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>No GND pour under R20-R23, C10-C11.</text>
-<text x='1120.0' y='216' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>U1 loop small, far from the analog zone,</text>
-<text x='1120.0' y='232' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  the Click and the antenna.</text>
-<text x='1120.0' y='248' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>+3V3A: U2 to J4-7 only, 0.5 mm.</text>
-<text x='1120.0' y='264' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>VIN, 5V: 1 mm. Signals 0.3 mm.</text>
-<text x='1120.0' y='280' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>SPI and DRDY: short, over solid GND,</text>
-<text x='1120.0' y='296' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  33R at the driving end.</text>
-<text x='1120.0' y='312' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>CLKIN: Y1 close to JP1 and P6.</text>
-<text x='1120.0' y='328' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Nothing under the DevKit antenna.</text>
-<text x='1120.0' y='344' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Terminal wire entry faces the edge.</text>
-<text x='1120.0' y='360' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'></text>
-<text x='1120.0' y='376' font-size='13' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>Colours</text>
-<text x='1120.0' y='396' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>green   terminals and pin headers</text>
-<text x='1120.0' y='412' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>purple  plug-in modules and sockets</text>
-<text x='1120.0' y='428' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>blue    analog zone</text>
-<text x='1120.0' y='444' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>red     power zone</text>
-<text x='1120.0' y='460' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>hatch   antenna keep-out</text>
-<text x='1120.0' y='476' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>yellow  test points</text>
-<text x='1120.0' y='492' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'></text>
-<text x='1120.0' y='508' font-size='13' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>Before ordering</text>
-<text x='1120.0' y='528' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>DevKit outline and header rows:</text>
-<text x='1120.0' y='544' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  Espressif DXF v1.2.</text>
-<text x='1120.0' y='560' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Click outline and mikroBUS rows:</text>
-<text x='1120.0' y='576' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  MikroE drawing.</text>
-<text x='1120.0' y='592' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Print 1:1 and test-fit DevKit,</text>
-<text x='1120.0' y='608' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  Click, ZS-042 and the terminals.</text>
+<text x='1120.0' y='168' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>AMP_GND_Z: P2-2 to P4-2 only.</text>
+<text x='1120.0' y='184' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>AMP_GND_H: P3-2 to P5-1 only.</text>
+<text x='1120.0' y='200' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  Own traces, not the pour. R30/R34 DNP.</text>
+<text x='1120.0' y='216' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>No GND pour under R20-R23, C10-C11.</text>
+<text x='1120.0' y='232' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>U1 loop small, far from the analog zone,</text>
+<text x='1120.0' y='248' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  the Click and the antenna.</text>
+<text x='1120.0' y='264' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>+3V3A: U2 to J4-7 and Y1 only, 0.5 mm.</text>
+<text x='1120.0' y='280' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>VIN, 5V: 1 mm. Signals 0.3 mm.</text>
+<text x='1120.0' y='296' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>SPI and DRDY: short, over solid GND,</text>
+<text x='1120.0' y='312' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  series R at the driving end.</text>
+<text x='1120.0' y='328' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>CLKIN: Y1 close to JP1 and P6.</text>
+<text x='1120.0' y='344' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Nothing under the DevKit antenna.</text>
+<text x='1120.0' y='360' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Terminal wire entry faces the edge.</text>
+<text x='1120.0' y='376' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'></text>
+<text x='1120.0' y='392' font-size='13' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>Colours</text>
+<text x='1120.0' y='412' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>green   terminals and pin headers</text>
+<text x='1120.0' y='428' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>purple  plug-in modules and sockets</text>
+<text x='1120.0' y='444' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>blue    analog zone</text>
+<text x='1120.0' y='460' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>red     power zone</text>
+<text x='1120.0' y='476' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>hatch   antenna keep-out</text>
+<text x='1120.0' y='492' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>yellow  test points</text>
+<text x='1120.0' y='508' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'></text>
+<text x='1120.0' y='524' font-size='13' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>Before ordering</text>
+<text x='1120.0' y='544' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>DevKit outline and header rows:</text>
+<text x='1120.0' y='560' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  Espressif DXF v1.2.</text>
+<text x='1120.0' y='576' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Click outline and mikroBUS rows:</text>
+<text x='1120.0' y='592' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  MikroE drawing.</text>
+<text x='1120.0' y='608' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Print 1:1 and test-fit DevKit,</text>
+<text x='1120.0' y='624' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  Click, ZS-042 and the terminals.</text>
 </svg>

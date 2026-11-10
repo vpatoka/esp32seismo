@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "seismo")(type "KiCad")(uri "${KIPRJMOD}/seismo.pretty")(options "")(descr "VSEISMO carrier project footprints"))
+)
