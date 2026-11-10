@@ -241,7 +241,7 @@
 <circle cx='98.0' cy='698.96' r='9' stroke='#2e7d32' stroke-width='1.4' fill='#fff'/>
 <text x='98.0' y='702.96' font-size='9' fill='#2e7d32' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace'>2</text>
 <text x='136.0' y='650.0' font-size='12' fill='#2e7d32' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>P1</text>
-<text x='136.0' y='664.0' font-size='10' fill='#2e7d32' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>12V IN</text>
+<text x='136.0' y='664.0' font-size='10' fill='#2e7d32' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>DC IN J8</text>
 <rect x='178.0' y='622.0' width='64.0' height='28.0' rx='0' stroke='#111' stroke-width='1.6' fill='#fff'/>
 <text x='210.0' y='640.0' font-size='9' fill='#111' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>F1</text>
 <rect x='178.0' y='662.0' width='72.0' height='24.0' rx='0' stroke='#111' stroke-width='1.6' fill='#fff'/>
@@ -274,17 +274,17 @@
 <circle cx='958.8' cy='686.0' r='6' stroke='#111' stroke-width='1.4' fill='#ffeb3b'/>
 <circle cx='984.4' cy='686.0' r='6' stroke='#111' stroke-width='1.4' fill='#ffeb3b'/>
 <circle cx='1010.0' cy='686.0' r='6' stroke='#111' stroke-width='1.4' fill='#ffeb3b'/>
-<text x='866.0' y='718.0' font-size='9' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>TP1-TP6: 12V 5V 3V3 3V3A GND CLKIN</text>
+<text x='866.0' y='718.0' font-size='9' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>TP1-TP6: VIN 5V 3V3 3V3A GND CLKIN</text>
 <text x='1120.0' y='116' font-size='13' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>Layout rules</text>
 <text x='1120.0' y='136' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Bottom: solid GND pour, stitched to</text>
 <text x='1120.0' y='152' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  top GND fill, vias every ~10 mm.</text>
 <text x='1120.0' y='168' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>AMP_GND: per channel, from P2-2 / P3-2</text>
-<text x='1120.0' y='184' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  to P4-2 / P5-1, GND only at R30.</text>
+<text x='1120.0' y='184' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  to P4-2 / P5-1. R30 DNP (J8 joins).</text>
 <text x='1120.0' y='200' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>No GND pour under R20-R23, C10-C11.</text>
 <text x='1120.0' y='216' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>U1 loop small, far from the analog zone,</text>
 <text x='1120.0' y='232' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  the Click and the antenna.</text>
 <text x='1120.0' y='248' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>+3V3A: U2 to J4-7 only, 0.5 mm.</text>
-<text x='1120.0' y='264' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>12V, 5V: 1 mm. Signals 0.3 mm.</text>
+<text x='1120.0' y='264' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>VIN, 5V: 1 mm. Signals 0.3 mm.</text>
 <text x='1120.0' y='280' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>SPI and DRDY: short, over solid GND,</text>
 <text x='1120.0' y='296' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>  33R at the driving end.</text>
 <text x='1120.0' y='312' font-size='11' fill='#333' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>CLKIN: Y1 close to JP1 and P6.</text>

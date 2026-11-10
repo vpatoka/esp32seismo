@@ -6,7 +6,7 @@ The carrier for [esp32seismo](../../README.md). Three modules plug into female h
 - the MikroE ADC 15 Click
 - a ZS-042 DS3231 module
 
-Everything else is on the carrier: the 12 V to 5 V converter, a separate quiet 3.3 V for the ADC, one analog front-end block per amplifier channel, the 8.192 MHz ADC clock, and the GPS PPS input.
+Everything else is on the carrier: the DC to 5 V converter fed from the EQAMP's J8, a separate quiet 3.3 V for the ADC, one analog front-end block per amplifier channel, the 8.192 MHz ADC clock, and the GPS PPS input.
 
 It follows the esp32nixie carrier board pattern: one generator script, hand-placed drawings, and a KiCad netlist for layout. The analog reasoning is in [main README, Hardware](../../README.md#hardware). The firmware pin map it matches is in [main README, Firmware Architecture](../../README.md#firmware-architecture).
 
@@ -37,8 +37,8 @@ Connections live in the `PARTS` list at the bottom of the script, and the drawin
 
 ```mermaid
 flowchart LR
-    A12[12 V adapter] -->|P1| CB[Carrier<br/>U1 5 V, U2 3.3 V analog]
-    AMPPSU[16-24 V supply] --> EQ[Webtronics EQAMP]
+    PSU[18-24 V DC adapter] -->|J7| EQ[Webtronics EQAMP]
+    EQ -->|J8 raw DC| CB[Carrier<br/>U1 5 V, U2 3.3 V analog]
     GZ[L-15B Z] -->|2-pin in| EQ
     GH[L-15B H] -->|2-pin in| EQ
     EQ -->|CH1 out, 2-pin| P2[P2]
@@ -54,7 +54,8 @@ flowchart LR
 ```
 
 - **One block per channel.** Each EQAMP channel has a 2-pin input from its geophone (into the LT1007) and a 2-pin output (signal and ground). The carrier keeps each output pair intact all the way to the ADC: the signal goes through the divider to AINx+, and that channel's own ground return goes to AINx−. That's a pseudo-differential input per channel.
-- **Two supplies, one ground link.** The EQAMP keeps its own 16-24 V supply. Its ground arrives on P2-2 and P3-2 as `AMP_GND` and joins `GND` only at R30.
+- **One adapter.** An 18 to 24 V DC adapter feeds the EQAMP J7. The carrier takes the EQAMP's J8, the raw DC after its bridge rectifier and before its LM7812 / LM2574 regulators (about 15 to 27 V). Never J9: that's the amplifier's own regulated ±12 V analog supply.
+- **Ground.** The J8 power return joins the EQAMP and carrier grounds. The channel ground returns (P2-2, P3-2) still go to each channel's AINx−, so the few mV across the power return cancel in the ADC. R30, the old single link, is DNP by default.
 - **Two 3.3 V rails, on purpose:**
   - `+3V3` is the DevKit's own LDO. That regulator also feeds the ESP32 radio, so the rail carries WiFi transmit bursts. On the carrier it only feeds the DS3231, the pull-ups and the spare terminal.
   - `+3V3A` is a dedicated quiet rail: 5 V through FB1 into U2. It feeds only the Click and Y1. The Click ties the ADC's AVDD and DVDD to its mikroBUS 3.3V pin, so whatever sits on that pin reaches the analog front end.
@@ -74,7 +75,7 @@ Screw terminals are Phoenix MKDS 1,5 at 5.08 mm. Module sockets and the CLKIN he
 
 | Ref | Pins | Function |
 |---|---|---|
-| P1 | 1 +12V, 2 GND | 12 V adapter in |
+| P1 | 1 +VIN, 2 GND | Raw DC from the EQAMP J8 (pin 1 +, pin 2 GND), about 15 to 27 V |
 | P2 | 1 SIG, 2 GND | EQAMP channel 1 output, vertical (Z), ±10 V |
 | P3 | 1 SIG, 2 GND | EQAMP channel 2 output, horizontal (H), ±10 V |
 | P4 | 1 AIN0+, 2 AIN0− | To the Click TB1, same order as TB1 |
@@ -139,9 +140,9 @@ Generated. The same data as `seismo-carrier.net`.
 | +3V3A | C5-1, C6-1, C7-1, C12-1, J4-7, R31-2, TP4-1, U2-1, Y1-4 |
 | +5V | C2-1, C3-1, D2-2, FB1-1, P7-1, R1-1, TP2-1, U1-3 |
 | +5V_A | C4-1, FB1-2, U2-3 |
-| +12V | C1-1, D1-1, D3-1, TP1-1, U1-1 |
-| +12V_F | D3-2, F1-2 |
-| +12V_RAW | F1-1, P1-1 |
+| +VIN | C1-1, D1-1, D3-1, TP1-1, U1-1 |
+| +VIN_F | D3-2, F1-2 |
+| +VIN_RAW | F1-1, P1-1 |
 | ADC_CS | J4-3, R13-2 |
 | ADC_CS2 | J5-1, R16-2 |
 | ADC_DRDY | J5-2, R14-1 |
@@ -184,7 +185,7 @@ MPNs carried over from the Nixie carrier BOM are marked "as Nixie". The rest are
 
 | Ref | Qty | Part | MPN |
 |---|---|---|---|
-| Adapter (off-board) | 1 | 12 V DC, about 1 A | any regulated |
+| Adapter (off-board) | 1 | 18 to 24 V DC, 0.5 A or more, feeds the EQAMP J7 | any regulated |
 | DK1 | 1 | ESP32-C5-DevKitC-1-N8R8 | Espressif |
 | Click | 1 | ADC 15 Click | MIKROE-4890 |
 | RTC | 1 | ZS-042 DS3231 module | generic, DS3231SN preferred |
@@ -192,11 +193,11 @@ MPNs carried over from the Nixie carrier BOM are marked "as Nixie". The rest are
 | U1 | 1 | 5 V 1.5 A switching regulator, 7805 pinout | OKI-78SR-5/1.5-W36-C (as Nixie) |
 | U2 | 1 | 3.3 V 100 mA LDO, TO-92 | LP2950ACZ-3.3 (verify part and pinout) |
 | F1 | 1 | PTC 0.5 A hold | RXEF050 (as Nixie) |
-| D1 | 1 | TVS 600 W, 15.3 V standoff | P6KE18A (as Nixie) |
+| D1 | 1 | TVS 600 W, 25.6 V standoff (28.2 V for a 28 V adapter) | P6KE30A (P6KE33A for 28 V); verify |
 | D2 | 1 | Schottky 1 A | 1N5817RLG (as Nixie) |
 | D3 | 1 | Schottky 1 A, reverse block | 1N5819RLG (as Nixie) |
 | FB1 | 1 | Axial ferrite bead | Fair-Rite 2743001112 (verify) |
-| C1 | 1 | 22 µF 25 V electrolytic | EEU-FR1E220 (as Nixie) |
+| C1 | 1 | 22 µF 50 V electrolytic | EEU-FR1H220 (verify) |
 | C2 | 1 | 100 µF 25 V electrolytic | EEU-FR1E101 (as Nixie) |
 | C4, C5 | 2 | 10 µF 16 V electrolytic, 5 mm | to choose |
 | C3, C6, C7, C12, C13 | 5 | 100 nF 50 V X7R | C320C104K5R5TA (as Nixie) |
@@ -204,7 +205,7 @@ MPNs carried over from the Nixie carrier BOM are marked "as Nixie". The rest are
 | R20, R22 | 2 | 9.1k 0.1 % 25 ppm metal film | to choose |
 | R21, R23 | 2 | 1.0k 0.1 % 25 ppm metal film | to choose |
 | R10-R16, R32, R33 | 9 | 33 Ω 1/4 W (0 Ω links work too) | to choose |
-| R30 | 1 | 10 Ω 1/4 W (or a 0 Ω link) | to choose |
+| R30 (DNP) | 1 | 10 Ω 1/4 W, fit only if hum | to choose |
 | R1 | 1 | 2.2k 1/4 W | CF14JT2K20 (as Nixie) |
 | R31, R44 | 2 | 10k 1/4 W | CF14JT10K0 (as Nixie) |
 | R42 | 1 | 1k 1/4 W | CF14JT1K00 (as Nixie) |
@@ -232,7 +233,7 @@ PCB: JLCPCB or PCBWay, 2 layers, 130 × 90 mm, 1.6 mm, 1 oz, HASL.
   - The error is nearly the same on both channels, because the dividers match. Measure it once with the "Positive test level" and a known amplifier signal, and trim it with `chN_gcal`.
 
   The 47 nF also serves as the charge reservoir for each input sample. Keep C10 and C11 at the point where the pigtails leave the board, and keep P4 and P5 short.
-- **Ground link.** R30 is the only path between `AMP_GND` and `GND`. 10 Ω breaks small loops but keeps the ADC reference. Fit 0 Ω if there's no hum. Route each channel's ground return as its own trace, P2-2 to P4-2 and P3-2 to P5-1, not through the pour.
+- **Ground link.** With power from J8, the power return already joins `AMP_GND` and `GND`, so R30 stays DNP. A second hard link would close a loop through the power cable. Fit 10 Ω only if hum shows up. Route each channel's ground return as its own trace, P2-2 to P4-2 and P3-2 to P5-1, not through the pour, and run the J8 cable bundled with the P2/P3 cables to keep the loop area small.
 - **+3V3A.** FB1, C4, U2 (LP2950, 100 mA, needs at least 1 µF on its output), C5 and C6.
   - Load is under 30 mA: the ADC, the LTC6903, the Click LED and Y1.
   - Both 3.3 V rails come from the same 5 V, so they rise together, and the Click's 4.7k pull-ups can't back-feed a DevKit that's off.
@@ -247,14 +248,33 @@ PCB: JLCPCB or PCBWay, 2 layers, 130 × 90 mm, 1.6 mm, 1 oz, HASL.
   - With the stock Click, leave JP1 open and P6 unwired, don't cut the trace, and set `clk_src=ltc6903`.
 - **1 Hz reference.** JP2 picks the DS3231 SQW or the GPS PPS. R44 is the pull-up the open-drain SQW needs. R42 protects GPIO23 from a 5 V PPS, and R43 (DNP) turns it into a 1k/2.2k divider if the GPS drives a 5 V PPS.
 - **ZS-042.** It has 4.7k pull-ups on SCL, SDA and SQW, so R40/R41 stay DNP. Its charge circuit (200 Ω and a diode from VCC) is meant for an LIR2032. With a plain CR2032, remove the diode.
-- **Power.** Same front end as the Nixie carrier, with D3 added as a reverse-polarity block. D1 sits after F1, so a sustained overvoltage trips the PTC.
+- **Power, from the EQAMP J8.** P1 takes the amplifier's raw DC, about 15 to 27 V. The carrier load sits ahead of the amplifier's LM7812 and LM2574, which regulate out the WiFi load steps.
+  - D1 is a P6KE30A (25.6 V standoff) for adapters up to 24 V. Use a P6KE33A (28.2 V) for a 28 V adapter. The old P6KE18A would conduct above about 17 V.
+  - C1 is rated 50 V, since J8 can reach about 26.6 V.
+  - U1 takes 7 to 36 V. F1 is rated well above 30 V. D3 (40 V) is redundant behind the amplifier's bridge but harmless.
+  - D1 sits after F1, so a sustained overvoltage trips the PTC.
+  - Adapter budget: the EQAMP's 150 mA, plus the carrier's about 0.11 A peak at 24 V (0.17 A at 16 V), so 0.5 A or more.
   - 5 V budget: about 180 mA average and 450 mA peak for the DevKit, plus about 30 mA for a GPS module, against U1's 1.5 A.
   - D2 keeps the carrier from fighting the DevKit's USB 5 V.
 
+## Shed installation (unheated)
+
+The station lives in an uninsulated shed, so expect −30 °C winter nights, 40 °C summer afternoons and condensation.
+
+- **Keep the CB3LV.** A quartz oscillator moves only tens of ppm across its rated range. The LTC6903 follows its own die temperature, which is exactly what a shed varies all day.
+  - Order the industrial grade (−40 to +85 °C). The "-3I" in CB3LV-3I-8M192000 should be that grade; confirm it in the CTS ordering-code table, because a 0 to 70 °C part is out of spec on a cold night.
+  - Expect about ±50 ppm over temperature. With GPS PPS or the DS3231 on JP2, the firmware measures and tracks the drift. Without a reference, it's up to about 4 s per day at the extremes.
+- **TCXO upgrade.** For long runs without GPS, an 8.192 MHz 3.3 V CMOS TCXO in the same 7 × 5 mm size gives about ±0.5 to 2.5 ppm. Check that its pins are 1 enable, 2 GND, 3 out, 4 VCC before swapping it onto the Y1 footprint.
+- **DS3231.** Use a ZS-042 with the DS3231SN (TCXO, ±2 ppm), not the DS3231M. An LIR2032 loses much of its capacity in hard frost, so a plain CR2032 with the charge diode removed is often the better winter choice.
+- **Electrolytics.** C1, C2, C4 and C5 lose capacitance in the cold, and the LP2950 needs its output capacitor to stay stable. Use parts rated −40 °C (the Panasonic FR series in the BOM is).
+- **Condensation.** A sealed enclosure with a desiccant pack, or a vent membrane, matters more than any part rating. Dew on R20-R23 and C10-C11 shows up as drift and noise. Conformal coating of the analog zone is worth considering.
+- **Amplifier and sensors.** Temperature also shifts the L-15B damping and the EQAMP offset. The EQAMP's 0.05 Hz high-pass removes slow offset drift before it reaches the ADC.
+- **Placement.** Put the geophones on a pier or bedrock away from the shed walls, and run the cables slack. Wind on the shed shows up first in the horizontal channel.
+
 ## Bring-up order
 
-1. **Bare board, no modules.** U1, U2 and Y1 fitted. Apply 12 V on P1, then check:
-   - TP1 = 12 V, TP2 = 5 V, TP4 = 3.3 V, LED1 on, nothing warm.
+1. **Bare board, no modules.** U1, U2 and Y1 fitted. Apply 24 V from a bench supply on P1, then check:
+   - TP1 = 24 V (about 1.4 V less from the real J8), TP2 = 5 V, TP4 = 3.3 V, LED1 on, nothing warm.
    - Reverse the plug once: nothing should happen.
 2. **JP1 on 1-2.** Scope TP6 for 8.192 MHz with a clean edge.
 3. **DevKit in, USB only, carrier unpowered.**
@@ -266,7 +286,7 @@ PCB: JLCPCB or PCBWay, 2 layers, 130 × 90 mm, 1.6 mm, 1 oz, HASL.
    - Click unmodified, JP1 open, `clk_src=ltc6903`: the console shows "ADC ok, ID 0x22xx".
    - Then cut the LTC6903 trace, wire P6 to the CLKIN pad, set JP1 1-2 and `clk_src=ext`.
 7. **P4 and P5 pigtails to the Click TB1 and TB2.** Short P2 and P3 (SIG to GND) and read the noise floor on the web page. It should match the "Shorted" mux reading.
-8. **EQAMP channel outputs on P2 and P3, with the EQAMP on its own supply.** Check for hum. If hum shows up, try R30 at 0 Ω, then 10 Ω.
+8. **EQAMP J8 to P1, channel outputs on P2 and P3.** Check that the EQAMP's ±12 V stays steady with WiFi busy, and check for hum. If hum shows up, fit R30 at 10 Ω.
 
 ## Footprints
 
@@ -274,7 +294,7 @@ Generated. KiCad footprint per part.
 
 | Ref | Value | Footprint | Note |
 |---|---|---|---|
-| C1 | 22uF 25V | `Capacitor_THT:CP_Radial_D6.3mm_P2.50mm` |  |
+| C1 | 22uF 50V | `Capacitor_THT:CP_Radial_D6.3mm_P2.50mm` |  |
 | C2 | 100uF 25V | `Capacitor_THT:CP_Radial_D6.3mm_P2.50mm` |  |
 | C3 | 100nF | `Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm` |  |
 | C4 | 10uF 16V | `Capacitor_THT:CP_Radial_D5.0mm_P2.00mm` |  |
@@ -285,7 +305,7 @@ Generated. KiCad footprint per part.
 | C11 | 47nF C0G | `Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm` | C0G/NP0 only |
 | C12 | 100nF | `Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm` | at Y1 pin 4, datasheet asks >= 10 nF |
 | C13 | 100nF | `Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm` | at J2 VCC |
-| D1 | P6KE18A | `Diode_THT:D_DO-15_P10.16mm_Horizontal` | TVS, unidirectional, cathode to +12V |
+| D1 | P6KE30A | `Diode_THT:D_DO-15_P10.16mm_Horizontal` | TVS, 25.6 V standoff, cathode to +VIN; P6KE33A for a 28 V adapter |
 | D2 | 1N5817 | `Diode_THT:D_DO-41_SOD81_P10.16mm_Horizontal` |  |
 | D3 | 1N5819 | `Diode_THT:D_DO-41_SOD81_P10.16mm_Horizontal` | reverse-polarity block |
 | F1 | RXEF050 | `Capacitor_THT:C_Disc_D7.5mm_W5.0mm_P5.00mm` | footprint is a stand-in, check the RXEF050 drawing |
@@ -298,7 +318,7 @@ Generated. KiCad footprint per part.
 | JP1 | CLK SEL | `Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical` | 1-2 = oscillator, 2-3 = GPIO7 LEDC, open = stock LTC6903 |
 | JP2 | REF SEL | `Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical` | 1-2 = DS3231 SQW, 2-3 = GPS PPS |
 | LED1 | green | `LED_THT:LED_D3.0mm` |  |
-| P1 | 12V IN | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal` |  |
+| P1 | DC IN EQAMP J8 | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal` |  |
 | P2 | CH1 Z IN | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal` |  |
 | P3 | CH2 H IN | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal` |  |
 | P4 | TO CLICK TB1 | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal` |  |
@@ -318,7 +338,7 @@ Generated. KiCad footprint per part.
 | R21 | 1.0k 0.1% | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 0.1 %, 25 ppm metal film |
 | R22 | 9.1k 0.1% | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 0.1 %, 25 ppm metal film |
 | R23 | 1.0k 0.1% | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 0.1 %, 25 ppm metal film |
-| R30 | 10R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | single AMP_GND to GND link; 0R if there is no hum |
+| R30 | 10R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | DNP by default: the J8 power return joins the grounds; fit only if hum |
 | R31 | 10k | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
 | R32 | 33R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
 | R33 | 33R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
@@ -327,7 +347,7 @@ Generated. KiCad footprint per part.
 | R42 | 1k | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
 | R43 | 2.2k | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | DNP; fit for a 5 V PPS output |
 | R44 | 10k | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
-| TP1 | +12V | `Connector_PinHeader_2.54mm:PinHeader_1x01_P2.54mm_Vertical` |  |
+| TP1 | +VIN | `Connector_PinHeader_2.54mm:PinHeader_1x01_P2.54mm_Vertical` |  |
 | TP2 | +5V | `Connector_PinHeader_2.54mm:PinHeader_1x01_P2.54mm_Vertical` |  |
 | TP3 | +3V3 | `Connector_PinHeader_2.54mm:PinHeader_1x01_P2.54mm_Vertical` |  |
 | TP4 | +3V3A | `Connector_PinHeader_2.54mm:PinHeader_1x01_P2.54mm_Vertical` |  |

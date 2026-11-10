@@ -1,16 +1,16 @@
 <svg xmlns='http://www.w3.org/2000/svg' width='1960' height='1820' viewBox='0 0 1960 1820'>
 <rect x='0' y='0' width='1960' height='1820' fill='#fff'/>
 <text x='20' y='34' font-size='22' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>VSEISMO carrier board, schematic rev A (design reference, not for fabrication)</text>
-<text x='20' y='58' font-size='13' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Net-label style: same blue label = same net. Pin numbers in grey. AMP_GND meets GND only through R30.</text>
+<text x='20' y='58' font-size='13' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Net-label style: same blue label = same net. Pin numbers in grey. Power comes from the EQAMP J8 (raw DC), so the power return already joins AMP_GND and GND.</text>
 <rect x='20' y='80' width='900' height='420' rx='0' stroke='#666' stroke-width='1.2' fill='none' stroke-dasharray='6 4'/>
-<text x='30' y='100' font-size='15' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>A. Power: own 12 V adapter, U1 makes 5 V, U2 makes a clean 3.3 V for the ADC</text>
+<text x='30' y='100' font-size='15' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>A. Power: raw DC from EQAMP J8, U1 makes 5 V, U2 makes a clean 3.3 V for the ADC</text>
 <rect x='60' y='150' width='34' height='52' rx='0' stroke='#111' stroke-width='1.6' fill='#f4f4f4'/>
 <text x='77' y='128' font-size='12' fill='#111' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>P1</text>
-<text x='77' y='142' font-size='11' fill='#666' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace'>12V IN</text>
+<text x='77' y='142' font-size='11' fill='#666' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace'>DC IN (J8)</text>
 <circle cx='77' cy='163.0' r='7' stroke='#111' stroke-width='1.4' fill='none'/>
 <line x1='72' y1='168.0' x2='82' y2='158.0' stroke='#111' stroke-width='1'/>
 <text x='77' y='167.0' font-size='10' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'></text>
-<text x='54' y='167.0' font-size='11' fill='#111' text-anchor='end' font-family='DejaVu Sans Mono, Consolas, monospace'>1 +12V</text>
+<text x='54' y='167.0' font-size='11' fill='#111' text-anchor='end' font-family='DejaVu Sans Mono, Consolas, monospace'>1 +VIN</text>
 <circle cx='77' cy='189.0' r='7' stroke='#111' stroke-width='1.4' fill='none'/>
 <line x1='72' y1='194.0' x2='82' y2='184.0' stroke='#111' stroke-width='1'/>
 <text x='77' y='193.0' font-size='10' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'></text>
@@ -31,14 +31,14 @@
 <line x1='253.0' y1='163.0' x2='290' y2='163.0' stroke='#111' stroke-width='1.6'/>
 <text x='244.0' y='187.0' font-size='11' fill='#111' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace'>D3 1N5819</text>
 <line x1='290' y1='163.0' x2='520' y2='163.0' stroke='#b00020' stroke-width='1.6'/>
-<text x='320' y='155.0' font-size='10' fill='#0645ad' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>+12V</text>
+<text x='320' y='155.0' font-size='10' fill='#0645ad' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>+VIN</text>
 <circle cx='330' cy='163.0' r='3' stroke='#111' stroke-width='1.4' fill='#111'/>
 <line x1='330' y1='163.0' x2='330' y2='184.0' stroke='#111' stroke-width='1.6'/>
 <line x1='330' y1='202.0' x2='330' y2='223.0' stroke='#111' stroke-width='1.6'/>
 <path d='M 321 202.0 L 339 202.0 L 330 184.0 Z' stroke='#111' stroke-width='1.6' fill='#111'/>
 <line x1='321' y1='184.0' x2='339' y2='184.0' stroke='#111' stroke-width='2'/>
 <text x='344' y='197.0' font-size='11' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>D1</text>
-<text x='344' y='210.0' font-size='11' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>P6KE18A</text>
+<text x='344' y='210.0' font-size='11' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>P6KE30A</text>
 <line x1='330' y1='223.0' x2='330' y2='231.0' stroke='#111' stroke-width='1.6'/>
 <line x1='320' y1='231.0' x2='340' y2='231.0' stroke='#111' stroke-width='2'/>
 <line x1='324' y1='235.0' x2='336' y2='235.0' stroke='#111' stroke-width='2'/>
@@ -50,7 +50,7 @@
 <text x='400' y='187.0' font-size='12' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>+</text>
 <line x1='420' y1='196.0' x2='420' y2='223.0' stroke='#111' stroke-width='1.6'/>
 <text x='436' y='191.0' font-size='11' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>C1</text>
-<text x='436' y='204.0' font-size='11' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>22uF 25V</text>
+<text x='436' y='204.0' font-size='11' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>22uF 50V</text>
 <line x1='420' y1='223.0' x2='420' y2='231.0' stroke='#111' stroke-width='1.6'/>
 <line x1='410' y1='231.0' x2='430' y2='231.0' stroke='#111' stroke-width='2'/>
 <line x1='414' y1='235.0' x2='426' y2='235.0' stroke='#111' stroke-width='2'/>
@@ -178,11 +178,12 @@
 <line x1='638' y1='476' x2='642' y2='476' stroke='#111' stroke-width='2'/>
 <rect x='720' y='411' width='50' height='18' rx='3' stroke='#0645ad' stroke-width='1.6' fill='none'/>
 <text x='725' y='424' font-size='12' fill='#0645ad' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>+3V3A</text>
-<text x='560' y='130' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Own 12 V adapter. The EQAMP keeps its own</text>
-<text x='560' y='144' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>16-24 V supply, so the two grounds meet only</text>
-<text x='560' y='158' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>at R30 (section D).</text>
-<text x='560' y='180' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>D3 blocks a reversed plug. D1 clips spikes</text>
-<text x='560' y='194' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>after the PTC, so a sustained fault trips F1.</text>
+<text x='560' y='130' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>One adapter (18-24 V DC) feeds the EQAMP. P1 takes</text>
+<text x='560' y='144' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>its J8 raw DC (after its bridge, before its</text>
+<text x='560' y='158' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>regulators): about 15-27 V. Never its J9 +-12 V.</text>
+<text x='560' y='180' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>D1 P6KE30A (25.6 V standoff) for adapters up to</text>
+<text x='560' y='194' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>24 V; P6KE33A for 28 V. D3 is redundant behind</text>
+<text x='560' y='208' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>the amp bridge but harmless.</text>
 <text x='40' y='492' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>D2: the DevKit never fights its own USB 5 V.  +3V3A feeds only the Click (AVDD = DVDD there).</text>
 <rect x='940' y='80' width='1000' height='620' rx='0' stroke='#666' stroke-width='1.2' fill='none' stroke-dasharray='6 4'/>
 <text x='950' y='100' font-size='15' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>B. ESP32-C5-DevKitC-1 v1.2 (DK1) on two 1x16 female headers</text>
@@ -547,10 +548,10 @@
 <text x='525' y='1324.0' font-size='12' fill='#0645ad' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>AMP_GND</text>
 <circle cx='240' cy='1320.0' r='3' stroke='#111' stroke-width='1.4' fill='#111'/>
 <line x1='240' y1='1320.0' x2='240' y2='1322.0' stroke='#111' stroke-width='1.6'/>
-<rect x='233' y='1322.0' width='14' height='30' rx='0' stroke='#111' stroke-width='1.6' fill='none'/>
+<rect x='233' y='1322.0' width='14' height='30' rx='0' stroke='#111' stroke-width='1.6' fill='none' stroke-dasharray='4 3'/>
 <line x1='240' y1='1352.0' x2='240' y2='1354.0' stroke='#111' stroke-width='1.6'/>
 <text x='251' y='1334.0' font-size='11' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>R30</text>
-<text x='251' y='1347.0' font-size='11' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>10R</text>
+<text x='251' y='1347.0' font-size='11' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>10R DNP</text>
 <line x1='240' y1='1354.0' x2='240' y2='1362.0' stroke='#111' stroke-width='1.6'/>
 <line x1='230' y1='1362.0' x2='250' y2='1362.0' stroke='#111' stroke-width='2'/>
 <line x1='234' y1='1366.0' x2='246' y2='1366.0' stroke='#111' stroke-width='2'/>
@@ -608,7 +609,7 @@
 <line x1='160' y1='1505.0' x2='520' y2='1505.0' stroke='#111' stroke-width='1.6'/>
 <rect x='520' y='1496.0' width='66' height='18' rx='3' stroke='#0645ad' stroke-width='1.6' fill='none'/>
 <text x='525' y='1509.0' font-size='12' fill='#0645ad' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>AMP_GND</text>
-<text x='40' y='1534' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>R30: the one link between AMP_GND and GND (0R if hum-free, 10R breaks small loops). Ratio 0.099:</text>
+<text x='40' y='1534' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>R30 DNP: the J8 power return already joins AMP_GND and GND. Fit 10R only if hum shows up. Ratio 0.099:</text>
 <text x='40' y='1548' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>+-10 V -&gt; +-0.99 V. No clamp diodes: a clamp to GND would clip the negative half. TB2 is AIN1-, AIN1+ on the Click.</text>
 <rect x='940' y='720' width='1000' height='360' rx='0' stroke='#666' stroke-width='1.2' fill='none' stroke-dasharray='6 4'/>
 <text x='950' y='740' font-size='15' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>E. ADC clock: 8.192 MHz oscillator or ESP32 LEDC, to the Click CLKIN pad</text>
@@ -834,6 +835,6 @@
 <text x='97' y='1755.0' font-size='10' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'></text>
 <text x='74' y='1755.0' font-size='11' fill='#111' text-anchor='end' font-family='DejaVu Sans Mono, Consolas, monospace'>4 GND</text>
 <text x='200' y='1680' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>IO2 and IO3 are strapping pins on some DevKit revisions: inputs or late outputs only.</text>
-<text x='200' y='1700' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Test points (1x40 header pieces): TP1 +12V, TP2 +5V, TP3 +3V3, TP4 +3V3A, TP5 GND, TP6 CLKIN.</text>
+<text x='200' y='1700' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Test points (1x40 header pieces): TP1 +VIN, TP2 +5V, TP3 +3V3, TP4 +3V3A, TP5 GND, TP6 CLKIN.</text>
 <text x='200' y='1720' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Four M3 holes, nylon standoffs. Board 130 x 90 mm, 2 layers.</text>
 </svg>

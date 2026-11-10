@@ -212,11 +212,11 @@ def panel(s, x, y, w, h, title):
 # ══ SCHEMATIC ═════════════════════════════════════════════════════════════
 S = Svg(1960, 1820, "VSEISMO carrier board, schematic rev A (design reference, not for fabrication)")
 S.text(20, 58, "Net-label style: same blue label = same net. Pin numbers in grey. "
-       "AMP_GND meets GND only through R30.", 13, c=GRY)
+       "Power comes from the EQAMP J8 (raw DC), so the power return already joins AMP_GND and GND.", 13, c=GRY)
 
 # ── A: power ──────────────────────────────────────────────────────────────
-panel(S, 20, 80, 900, 420, "A. Power: own 12 V adapter, U1 makes 5 V, U2 makes a clean 3.3 V for the ADC")
-p = terminal(S, 60, 150, "P1", "12V IN", ["+12V", "GND"])
+panel(S, 20, 80, 900, 420, "A. Power: raw DC from EQAMP J8, U1 makes 5 V, U2 makes a clean 3.3 V for the ADC")
+p = terminal(S, 60, 150, "P1", "DC IN (J8)", ["+VIN", "GND"])
 y12 = p[0][1]
 S.line(*p[1], 100, p[1][1]); gnd(S, 100, p[1][1])
 S.line(*p[0], 130, y12, c=PWR)
@@ -226,9 +226,9 @@ S.text(155, y12 - 13, "F1 RXEF050", 11, anchor="middle")
 S.line(180, y12, 200, y12, c=PWR)
 diode_h(S, 200, y12, "D3", "1N5819", length=90)
 S.line(290, y12, 520, y12, c=PWR)
-S.text(320, y12 - 8, "+12V", 10, c=NET)
-S.dot(330, y12); diode_v(S, 330, y12, "D1", "P6KE18A", length=60, up=True); gnd(S, 330, y12 + 60)
-S.dot(420, y12); cap_v(S, 420, y12, "C1", "22uF 25V", polar=True, length=60); gnd(S, 420, y12 + 60)
+S.text(320, y12 - 8, "+VIN", 10, c=NET)
+S.dot(330, y12); diode_v(S, 330, y12, "D1", "P6KE30A", length=60, up=True); gnd(S, 330, y12 + 60)
+S.dot(420, y12); cap_v(S, 420, y12, "C1", "22uF 50V", polar=True, length=60); gnd(S, 420, y12 + 60)
 yr = 300
 S.line(520, y12, 520, yr, c=PWR); S.line(520, yr, 540, yr, c=PWR)
 S.rect(540, yr - 22, 100, 50, fill="#fbfbf3")
@@ -263,11 +263,12 @@ S.line(540, ya, 720, ya, c=PWR)
 S.dot(580, ya); cap_v(S, 580, ya, "C5", "10uF", polar=True, length=40); gnd(S, 580, ya + 40)
 S.dot(640, ya); cap_v(S, 640, ya, "C6", "100nF", length=40); gnd(S, 640, ya + 40)
 netlab(S, 720, ya, "+3V3A")
-S.text(560, 130, "Own 12 V adapter. The EQAMP keeps its own", 11, c=GRY)
-S.text(560, 144, "16-24 V supply, so the two grounds meet only", 11, c=GRY)
-S.text(560, 158, "at R30 (section D).", 11, c=GRY)
-S.text(560, 180, "D3 blocks a reversed plug. D1 clips spikes", 11, c=GRY)
-S.text(560, 194, "after the PTC, so a sustained fault trips F1.", 11, c=GRY)
+S.text(560, 130, "One adapter (18-24 V DC) feeds the EQAMP. P1 takes", 11, c=GRY)
+S.text(560, 144, "its J8 raw DC (after its bridge, before its", 11, c=GRY)
+S.text(560, 158, "regulators): about 15-27 V. Never its J9 +-12 V.", 11, c=GRY)
+S.text(560, 180, "D1 P6KE30A (25.6 V standoff) for adapters up to", 11, c=GRY)
+S.text(560, 194, "24 V; P6KE33A for 28 V. D3 is redundant behind", 11, c=GRY)
+S.text(560, 208, "the amp bridge but harmless.", 11, c=GRY)
 S.text(40, 492, "D2: the DevKit never fights its own USB 5 V.  +3V3A feeds only the Click (AVDD = DVDD there).", 11, c=GRY)
 
 # ── B: DevKit ─────────────────────────────────────────────────────────────
@@ -353,8 +354,8 @@ for i, (pin_ref, title, rs, rp, cc, node, out_ref, out_title, out_pins, sig_at) 
     S.line(pi[1][0], ygnd, 160, ygnd); S.line(160, ygnd, 160, rail); S.line(160, rail, 520, rail)
     netlab(S, 520, rail, "AMP_GND")
     if i == 0:
-        S.dot(240, rail); res_v(S, 240, rail, "R30", "10R", length=34); gnd(S, 240, rail + 34)
-S.text(40, 1534, "R30: the one link between AMP_GND and GND (0R if hum-free, 10R breaks small loops). Ratio 0.099:", 11, c=GRY)
+        S.dot(240, rail); res_v(S, 240, rail, "R30", "10R", length=34, dnp=True); gnd(S, 240, rail + 34)
+S.text(40, 1534, "R30 DNP: the J8 power return already joins AMP_GND and GND. Fit 10R only if hum shows up. Ratio 0.099:", 11, c=GRY)
 S.text(40, 1548, "+-10 V -> +-0.99 V. No clamp diodes: a clamp to GND would clip the negative half. TB2 is AIN1-, AIN1+ on the Click.", 11, c=GRY)
 
 # ── E: ADC clock ──────────────────────────────────────────────────────────
@@ -418,7 +419,7 @@ S.text(960, 1534, "P7 +5V powers the GPS module (u-blox class boards take 3.3-5 
 panel(S, 20, 1590, 1920, 200, "G. Spare GPIO, test points, mounting")
 terminal(S, 80, 1660, "P8", "SPARE", ["IO2", "IO3", "+3V3", "GND"], pitch=26)
 S.text(200, 1680, "IO2 and IO3 are strapping pins on some DevKit revisions: inputs or late outputs only.", 11, c=GRY)
-S.text(200, 1700, "Test points (1x40 header pieces): TP1 +12V, TP2 +5V, TP3 +3V3, TP4 +3V3A, TP5 GND, TP6 CLKIN.", 11, c=GRY)
+S.text(200, 1700, "Test points (1x40 header pieces): TP1 +VIN, TP2 +5V, TP3 +3V3, TP4 +3V3A, TP5 GND, TP6 CLKIN.", 11, c=GRY)
 S.text(200, 1720, "Four M3 holes, nylon standoffs. Board 130 x 90 mm, 2 layers.", 11, c=GRY)
 S.save("seismo-carrier-schematic.svg")
 
@@ -561,7 +562,7 @@ box(113, 24, 6, 7, "R42-44", "", size=8)
 term(120, 20, 3, "P7", "GPS", lab_side="l")
 term(120, 40, 4, "P8", "SPARE", lab_side="l")
 # ── power zone
-term(2, 66, 2, "P1", "12V IN")
+term(2, 66, 2, "P1", "DC IN J8")
 box(16, 64, 8, 3.5, "F1", "", size=9)
 box(16, 69, 9, 3, "D3", "", size=9)
 box(16, 74, 9, 3, "D1", "TVS", size=9)
@@ -576,7 +577,7 @@ P.text(*mm(40, 87), "trace around the keep-out", 9, c=GRY)
 for i in range(6):
     X, Y = mm(104 + i * 3.2, 72)
     P.circle(X, Y, 6, fill="#ffeb3b")
-P.text(*mm(102, 76), "TP1-TP6: 12V 5V 3V3 3V3A GND CLKIN", 9, c=GRY)
+P.text(*mm(102, 76), "TP1-TP6: VIN 5V 3V3 3V3A GND CLKIN", 9, c=GRY)
 # ── legend
 lx = OX + BW * K + 30
 ly = OY + 6
@@ -585,12 +586,12 @@ rules = [
     ("Bottom: solid GND pour, stitched to", False),
     ("  top GND fill, vias every ~10 mm.", False),
     ("AMP_GND: per channel, from P2-2 / P3-2", False),
-    ("  to P4-2 / P5-1, GND only at R30.", False),
+    ("  to P4-2 / P5-1. R30 DNP (J8 joins).", False),
     ("No GND pour under R20-R23, C10-C11.", False),
     ("U1 loop small, far from the analog zone,", False),
     ("  the Click and the antenna.", False),
     ("+3V3A: U2 to J4-7 only, 0.5 mm.", False),
-    ("12V, 5V: 1 mm. Signals 0.3 mm.", False),
+    ("VIN, 5V: 1 mm. Signals 0.3 mm.", False),
     ("SPI and DRDY: short, over solid GND,", False),
     ("  33R at the driving end.", False),
     ("CLKIN: Y1 close to JP1 and P6.", False),
@@ -655,15 +656,15 @@ def tb(ref, value, nets):
 
 
 # A: power
-tb("P1", "12V IN", ["+12V_RAW", "GND"])
-part("F1", "RXEF050", FP_PTC, ("Device", "Polyfuse"), {1: "+12V_RAW", 2: "+12V_F"},
+tb("P1", "DC IN EQAMP J8", ["+VIN_RAW", "GND"])
+part("F1", "RXEF050", FP_PTC, ("Device", "Polyfuse"), {1: "+VIN_RAW", 2: "+VIN_F"},
      "footprint is a stand-in, check the RXEF050 drawing")
-part("D3", "1N5819", FP_D, ("Device", "D_Schottky"), {1: "+12V", 2: "+12V_F"}, "reverse-polarity block")
-part("D1", "P6KE18A", "Diode_THT:D_DO-15_P10.16mm_Horizontal", ("Device", "D_TVS"),
-     {1: "+12V", 2: "GND"}, "TVS, unidirectional, cathode to +12V")
-part("C1", "22uF 25V", FP_CP, ("Device", "C_Polarized"), {1: "+12V", 2: "GND"})
+part("D3", "1N5819", FP_D, ("Device", "D_Schottky"), {1: "+VIN", 2: "+VIN_F"}, "reverse-polarity block")
+part("D1", "P6KE30A", "Diode_THT:D_DO-15_P10.16mm_Horizontal", ("Device", "D_TVS"),
+     {1: "+VIN", 2: "GND"}, "TVS, 25.6 V standoff, cathode to +VIN; P6KE33A for a 28 V adapter")
+part("C1", "22uF 50V", FP_CP, ("Device", "C_Polarized"), {1: "+VIN", 2: "GND"})
 part("U1", "OKI-78SR-5/1.5-W36-C", "Converter_DCDC:Converter_DCDC_Murata_OKI-78SR_Vertical",
-     ("Regulator_Switching", "OKI-78SR-5_1.5-W36-C"), {1: "+12V", 2: "GND", 3: "+5V"},
+     ("Regulator_Switching", "OKI-78SR-5_1.5-W36-C"), {1: "+VIN", 2: "GND", 3: "+5V"},
      "pins IN-GND-OUT; check caps against the Murata datasheet")
 part("C2", "100uF 25V", FP_CP, ("Device", "C_Polarized"), {1: "+5V", 2: "GND"})
 cap("C3", "100nF", "+5V", "GND")
@@ -711,7 +712,7 @@ res("R23", "1.0k 0.1%", "AIN1P", "AMP_GND", "0.1 %, 25 ppm metal film")
 cap("C11", "47nF C0G", "AIN1P", "AMP_GND", "C0G/NP0 only")
 tb("P4", "TO CLICK TB1", ["AIN0P", "AMP_GND"])
 tb("P5", "TO CLICK TB2", ["AMP_GND", "AIN1P"])
-res("R30", "10R", "AMP_GND", "GND", "single AMP_GND to GND link; 0R if there is no hum")
+res("R30", "10R", "AMP_GND", "GND", "DNP by default: the J8 power return joins the grounds; fit only if hum")
 
 # E: ADC clock
 part("Y1", "CB3LV-3I-8M192000", "seismo:Oscillator_CTS_CB3LV_7.0x5.0mm", ("Oscillator", "ASE-xxxMHz"),
@@ -742,7 +743,7 @@ res("R44", "10k", "G23_REF", "+3V3")
 
 # G: spare, test points
 tb("P8", "SPARE", ["SPARE_IO2", "SPARE_IO3", "+3V3", "GND"])
-for i, n in enumerate(("+12V", "+5V", "+3V3", "+3V3A", "GND", "CLKIN")):
+for i, n in enumerate(("+VIN", "+5V", "+3V3", "+3V3A", "GND", "CLKIN")):
     part(f"TP{i+1}", n, FP_HDR.format(n=1), ("Connector", "TestPoint"), {1: n})
 
 # ── checks
