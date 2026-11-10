@@ -36,6 +36,7 @@
  * 14 x decim taps to keep aliases out of 0..0.4 x f_out; 255 taps cover
  * decim 18. Below OSR 512 (8 kSPS) one task wake per sample is too slow. */
 #define ACQ_DECIM_MAX   18
+#define ACQ_RATE_TOL    0.05      /* DRDY count rate vs nominal: wider than the LTC6903's 1 % */
 #define ACQ_OSR_MIN     512
 
 /* acq_sample_t.flags: set on every output whose FIR window holds such an input */
@@ -92,6 +93,10 @@ typedef struct {
     uint32_t overruns;        /* input samples lost and held */
     uint32_t stale_frames;    /* backlog frames dropped: older than the DRDY count allows */
     uint32_t status_events;   /* unexpected STATUS: self-reset, resync */
+    uint32_t cap_bad;         /* MCPWM edge times outside the sanity window, since boot */
+    int32_t  cap_bad_us;      /* the last one's distance from the ISR time, us */
+    double   drdy_rate;       /* DRDY edges per esp_timer second, last 1 s check */
+    uint32_t drdy_rate_bad;   /* 1 s checks off nominal by more than ACQ_RATE_TOL */
     uint32_t restarts;
     acq_ch_stats_t ch[ACQ_NCH];   /* last full 1 s window of output samples */
 } acq_status_t;

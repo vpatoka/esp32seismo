@@ -155,6 +155,17 @@ static int64_t  s_cap_esp_last;             /* esp_timer when it was seen */
 static int64_t  s_cap_off_us;               /* esp_timer us = count / s_cap_div + this */
 static volatile bool s_cap_calib;           /* next DRDY-channel event is the soft catch */
 static volatile bool s_drdy_armed;
+static volatile uint32_t s_cap_bad;         /* latched edge times that failed the sanity check */
+static volatile int32_t  s_cap_bad_us;      /* how far off the last one was (now - t) */
+
+/* Sanity window for a latched edge time t against esp_timer at the ISR:
+ * the edge happened before the ISR, by its service latency. A little early
+ * is the calibration bias (the soft-catch ISR latency, a few us); later than
+ * a few sample periods means a wrong calibration, a wrong unwrap or a
+ * routing fault. Out of window: counted, and the ISR time is used instead,
+ * so a broken capture path degrades to the GPIO-interrupt accuracy. */
+#define CAP_EARLY_US      100
+#define CAP_LATE_US       5000
 
 /* Capture count (32 bit) to esp_timer microseconds. ISR context. The esp
  * time of the call bounds where the full count can be: within ISR latency,
@@ -168,7 +179,14 @@ static int64_t IRAM_ATTR cap_to_us(uint32_t cap)
     int64_t cap64 = expect + (int32_t)(cap - (uint32_t)expect);
     if (cap64 > s_cap64_last) { s_cap64_last = cap64; s_cap_esp_last = now; }
     portEXIT_CRITICAL_ISR(&s_cap_mux);
-    return (cap64 + s_cap_div / 2) / s_cap_div + s_cap_off_us;
+    int64_t t = (cap64 + s_cap_div / 2) / s_cap_div + s_cap_off_us;
+    int64_t d = now - t;
+    if (d < -CAP_EARLY_US || d > CAP_LATE_US) {
+        s_cap_bad = s_cap_bad + 1;
+        s_cap_bad_us = d > INT32_MAX ? INT32_MAX : d < INT32_MIN ? INT32_MIN : (int32_t)d;
+        t = now;
+    }
+    return t;
 }
 
 static bool IRAM_ATTR drdy_cap_cb(mcpwm_cap_channel_handle_t ch, const mcpwm_capture_event_data_t *e, void *ctx)
@@ -688,6 +706,45 @@ static bool service_drdy(void)
  * Task
  * ═════════════════════════════════════════════════════════════════════════ */
 
+/* Once a second: DRDY edges counted per esp_timer second against the nominal
+ * input rate. Catches edges counted twice (wrong capture polarity, glitches)
+ * or missed, on either edge-timing path, and publishes the capture sanity
+ * counters. The SYNC settling gap and the 0.4 % count quantization at the
+ * lowest rate sit far inside ACQ_RATE_TOL. */
+static int64_t  s_rchk_t;
+static uint32_t s_rchk_n;
+static bool     s_rate_was_bad;
+static uint32_t s_cap_bad_logged;
+
+static void rate_check(int64_t now)
+{
+    if (now - s_rchk_t < 1000000) return;
+    uint32_t c = s_drdy_cnt;
+    double r = (double)(c - s_rchk_n) * 1e6 / (double)(now - s_rchk_t);
+    s_rchk_t = now;
+    s_rchk_n = c;
+    bool bad = s_st.fs_in > 0 && fabs(r / s_st.fs_in - 1.0) > ACQ_RATE_TOL;
+    uint32_t cb = s_cap_bad;
+    int32_t cbus = s_cap_bad_us;
+    portENTER_CRITICAL(&s_mux);
+    s_st.drdy_rate = r;
+    if (bad) s_st.drdy_rate_bad++;
+    s_st.cap_bad = cb;
+    s_st.cap_bad_us = cbus;
+    portEXIT_CRITICAL(&s_mux);
+    if (bad && !s_rate_was_bad) {
+        ESP_LOGW(TAG, "DRDY rate %.1f/s against %.1f nominal: edges missed or counted twice", r, s_st.fs_in);
+    } else if (!bad && s_rate_was_bad) {
+        ESP_LOGI(TAG, "DRDY rate back to nominal (%.1f/s)", r);
+    }
+    s_rate_was_bad = bad;
+    if (cb != s_cap_bad_logged) {
+        ESP_LOGW(TAG, "%lu capture edge times failed the sanity check (last %ld us from the ISR time): "
+                 "used the ISR time for them", (unsigned long)(cb - s_cap_bad_logged), (long)cbus);
+        s_cap_bad_logged = cb;
+    }
+}
+
 /* Empty the ADC FIFO, then start counting DRDY edges from here. */
 static void resume_stream(void)
 {
@@ -698,6 +755,8 @@ static void resume_stream(void)
     ulTaskNotifyTake(pdTRUE, 0);
     s_seen = s_drdy_cnt;
     s_last_evt = esp_timer_get_time();
+    s_rchk_t = s_last_evt;
+    s_rchk_n = s_drdy_cnt;
     drdy_arm(true);
 }
 
@@ -819,6 +878,7 @@ static void acq_task(void *arg)
             ok = reconfigure();
             continue;
         }
+        rate_check(now);
         handle_requests();
     }
 }

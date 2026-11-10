@@ -122,6 +122,10 @@ curl 'http://vseismo/api/wave?since=118000&max=1000&order=oldest'
 | `status_events` | events | The ADC reset itself (brownout) or resynced without a SYNC from the station |
 | `restarts` | | Acquisition (re)starts since boot |
 | `capture` | | Edge timing in use: `isr` or `mcpwm`. Differs from the `capture` setting only if MCPWM setup failed at boot. |
+| `cap_bad` | edges | With `mcpwm`: latched edge times (DRDY or 1 Hz reference) that did not land just before their interrupt, between 100 µs after and 5 ms before it. Each one is timed by the interrupt instead, so a broken capture path degrades to `isr` accuracy rather than wrong times. Should stay 0; a steady climb means a calibration, routing or unwrap fault. Always 0 with `isr`. |
+| `cap_bad_us` | µs | How far the last such edge time was from its interrupt time. |
+| `drdy_rate` | edges/s | DRDY edges counted per second over the last 1 s check, on either path. Matches `fs_in` to within a few tenths of a percent. |
+| `drdy_rate_bad` | checks | 1 s checks where `drdy_rate` was more than 5 % off `fs_in`: edges counted twice (wrong edge, glitches) or missed. Should stay 0. |
 | `ring_len` | output samples | Samples the station keeps for `/api/wave`: 131072 in PSRAM, or 4096 in internal RAM when the board has no PSRAM. Divide by `fs_out` for the history in seconds. |
 
 ## /api/acq channel fields
