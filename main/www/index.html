@@ -142,10 +142,10 @@ progress{width:220px;height:10px}
         <option value="ledc">ESP32 LEDC on GPIO7</option><option value="ltc6903">On-board LTC6903 (stock Click)</option></select></label>
       <label class="f"><span>CLKIN frequency, Hz</span><input name="clk_hz" inputmode="numeric"><em>8192000 for an 8.192 MHz oscillator</em></label>
       <label class="f"><span>Oversampling ratio</span><select name="osr">
-        <option>128</option><option>256</option><option>512</option><option>1024</option><option>2048</option>
+        <option>512</option><option>1024</option><option>2048</option>
         <option>4096</option><option>8192</option><option>16256</option></select><em>Input rate = CLKIN / 2 / OSR</em></label>
       <label class="f"><span>Decimation</span><select name="decim">
-        <option>1</option><option>2</option><option>4</option><option>5</option><option>10</option><option>20</option></select><em>Output rate = input rate / decimation</em></label>
+        <option>1</option><option>2</option><option>4</option><option>5</option><option>10</option><option>16</option></select><em>Output rate = input rate / decimation (18 at most)</em></label>
       <label class="f"><span>FIR taps</span><input name="taps" inputmode="numeric"><em>0 picks 20 x decimation + 1</em></label>
       <label class="f"><span>Station code</span><input name="station" maxlength="5" autocapitalize="characters"></label>
       <label class="f"><span>Network code</span><input name="network" maxlength="2" autocapitalize="characters"><em>XX is the code for unregistered stations</em></label>
@@ -235,7 +235,7 @@ The USB console offers the same: type <code>help</code>.</p>
 var $=function(id){return document.getElementById(id);};
 var FAULTS={0:'abnormal reset',1:'I2C init',2:'task init',7:'ADC not found',8:'RTC not answering',
   9:'RTC lost power',10:'I2C bus recovered',11:'1 Hz reference lost',12:'ADC CRC errors',
-  13:'late ADC reads',14:'clipping',15:'no wall-clock time'};
+  13:'late ADC reads',14:'clipping',15:'no wall-clock time',16:'ADC reset or resynced itself'};
 var S={next:0,expect:null,fs:100,buf:[[],[]],lastT:0,cfg:null,acq:null,status:null,dirty:true};
 var MAXSEC=120;
 
@@ -384,8 +384,9 @@ function readouts(){
     var ok=a.running&&a.clock_ok;
     setDot('d-adc',ok?'ok':'bad');
     $('s-adc').textContent=!a.adc_ok?'not found':!a.clock_ok?'no clock on CLKIN':
-      fmt(a.fs_out,2)+' SPS'+(a.crc_errors||a.overruns?', '+a.crc_errors+' CRC / '+a.overruns+' late':'');
-    $('rate').textContent=fmt(a.fs_in,4)+' SPS in, '+fmt(a.fs_out,4)+' out, filter delay '+fmt(a.delay_ms,1)+' ms';
+      fmt(a.fs_out,2)+' SPS'+(a.crc_errors||a.overruns||a.status_events?', '+a.crc_errors+' CRC / '+a.overruns+' lost'+
+      (a.status_events?' / '+a.status_events+' ADC status':''):'');
+    $('rate').textContent=fmt(a.fs_in,4)+' SPS in, '+fmt(a.fs_out,4)+' out, delay '+fmt(a.delay_ms,2)+' ms (ADC + FIR)';
     $('acqsum').textContent=a.clk_src+', OSR '+a.osr+', decimate by '+a.decim;
     for(var c=0;c<2;c++){var s=a.ch[c];if(!s)continue;
       var vel=s.vel_ums!=null?fmt(s.vel_ums,3)+' µm/s':'set gain and sensitivity';

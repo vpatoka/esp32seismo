@@ -32,13 +32,35 @@ The API is the product. The web page is one client of it, and it gets no private
 ```
 curl 'http://vseismo/api/wave?since=0&max=5'
 {"ok":true,"next":1234,"seq0":1229,"n":5,"fs":100.0000,"t0":1794240527736,
- "ch0":[12,-3,8,1,-6],"ch1":[40,38,41,44,39]}
+ "ch0":[12,-3,8,1,-6],"ch1":[40,38,41,44,39],"flags":[0,0,0,1,1]}
 ```
 
 - Values are ADC counts after the decimating FIR, 24-bit scale.
 - `t0` is the UTC time of the first sample in ms. It's 0 until the station has wall-clock time.
-- Timestamps are corrected for the FIR group delay, so they mark when the ground moved.
+- Timestamps are corrected for the full group delay (ADC sinc3, 1.5 input periods, plus the FIR, (taps − 1) / 2 input periods), so they mark when the ground moved.
+- `flags` has one entry per sample. A bit is set when the FIR window of that sample held an input of that kind. A flagged sample is still on the correct time grid, but its value is not a clean measurement.
+
+| Bit | Value | Meaning |
+|---|---|---|
+| 0 | 1 | Gap: an input sample was lost (read late) and replaced by the last good one |
+| 1 | 2 | CRC: an input frame failed its CRC and was replaced by the last good one |
+| 2 | 4 | Unsettled: inputs held while the ADC filter settled after a SYNC |
+| 3 | 8 | Clip: an input sample was within 16 counts of full scale |
+
+- After a restart, output starts only once the FIR history holds settled data (taps + 3 input samples), so there's no ramp up from zero.
 - Poll again with `since=<next>`. If `seq0` isn't the `next` you asked for, samples rolled out of the 4096-sample ring and there's a gap.
+
+## /api/acq counters
+
+| Field | Unit | Meaning |
+|---|---|---|
+| `delay_ms` | ms | Total group delay subtracted from timestamps: ADC sinc3 plus FIR |
+| `n_in` | input samples | Input periods since the last restart, lost ones included |
+| `crc_errors` | frames | Frames whose output CRC did not match |
+| `overruns` | input samples | Samples lost because the read came too late, held at the last good value |
+| `stale_frames` | frames | Frames dropped because they were older than the DRDY count allows (FIFO backlog). Should stay 0. |
+| `status_events` | events | The ADC reset itself (brownout) or resynced without a SYNC from the station |
+| `restarts` | | Acquisition (re)starts since boot |
 
 ## /api/acq channel fields
 
@@ -61,8 +83,8 @@ curl 'http://vseismo/api/wave?since=0&max=5'
 | `station`, `network` | A-Z 0-9, 1-5 and 1-2 characters | Immediate |
 | `clk_src` | `ext`, `ledc`, `ltc6903` | Restarts acquisition |
 | `clk_hz` | 1000000..8400000 | Restarts acquisition |
-| `osr` | 128, 256, 512, 1024, 2048, 4096, 8192, 16256 | Restarts acquisition |
-| `decim` | 1..50 | Restarts acquisition |
+| `osr` | 512, 1024, 2048, 4096, 8192, 16256 | Restarts acquisition |
+| `decim` | 1..18 | Restarts acquisition |
 | `taps` | 0 (auto = 20 x decim + 1) or odd 3..255 | Restarts acquisition |
 | `ref` | `none`, `gps`, `rtc` | Reboot |
 | `ref_edge` | `rise`, `fall` | Reboot |
@@ -76,6 +98,8 @@ curl 'http://vseismo/api/wave?since=0&max=5'
 | `chN_amp` | 0 (unknown) .. 100000 | Immediate (scaling only) |
 | `chN_sens` | 0 (unknown) .. 10000 V/(m/s) | Immediate (scaling only) |
 | `wifi_ssid`, `wifi_pass` | | Import and console only. Reboot. |
+
+`osr` 128 and 256 (16 and 32 kSPS) and `decim` above 18 used to be accepted. Neither worked: one task wake per sample can't keep up above 8 kSPS, and the 255-tap FIR stops rejecting aliases past decimation 18. A stored config with those values falls back to OSR 4096 or decim 10 at boot.
 
 `N` is 0 or 1. A POST to `/api/config` applies every known key in the body. One bad value rejects the whole request and changes nothing. The reply says whether acquisition restarted and whether a reboot is needed.
 

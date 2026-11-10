@@ -731,12 +731,14 @@ static esp_err_t api_acq_handler(httpd_req_t *req)
         "{\"ok\":true,\"api\":%d,\"running\":%s,\"adc_ok\":%s,\"clock_ok\":%s,"
         "\"adc_id\":\"0x%04X\",\"adc_status\":\"0x%04X\",\"clk_src\":\"%s\",\"clk_hz\":%lu,"
         "\"osr\":%u,\"decim\":%u,\"fs_in\":%.4f,\"fs_out\":%.4f,\"delay_ms\":%.2f,"
-        "\"n_in\":%llu,\"seq\":%lu,\"crc_errors\":%lu,\"overruns\":%lu,\"restarts\":%lu,\"ch\":[",
+        "\"n_in\":%llu,\"seq\":%lu,\"crc_errors\":%lu,\"overruns\":%lu,\"stale_frames\":%lu,"
+        "\"status_events\":%lu,\"restarts\":%lu,\"ch\":[",
         SEISMO_API_VERSION, st.running ? "true" : "false", st.adc_ok ? "true" : "false",
         st.clock_ok ? "true" : "false", st.adc_id, st.adc_status, s_clk_names[g_config.clk_src],
         (unsigned long)st.clk_hz_actual, g_config.osr, g_config.decim, st.fs_in, st.fs_out,
         st.group_delay_s * 1000.0, (unsigned long long)st.n_in, (unsigned long)st.seq,
-        (unsigned long)st.crc_errors, (unsigned long)st.overruns, (unsigned long)st.restarts);
+        (unsigned long)st.crc_errors, (unsigned long)st.overruns, (unsigned long)st.stale_frames,
+        (unsigned long)st.status_events, (unsigned long)st.restarts);
 
     for (int c = 0; c < ACQ_NCH && n < 1900; c++) {
         const seismo_ch_cfg_t *cc = &g_config.ch[c];
@@ -766,7 +768,9 @@ static esp_err_t api_acq_handler(httpd_req_t *req)
 /* GET /api/wave?since=SEQ&max=N  ->  newest samples after SEQ, chunked JSON.
  * The page polls with the "next" value it got back. t0 is the UTC time of
  * the first sample in ms (0 = no wall-clock time yet). A seq jump or an
- * epoch change means a gap; the page draws a break there. */
+ * epoch change means a gap; the page draws a break there. flags[] holds
+ * ACQ_F_* per sample: the FIR window of that sample held a lost, corrupt,
+ * unsettled or clipped input. */
 #define WAVE_MAX 1000
 
 static esp_err_t api_wave_handler(httpd_req_t *req)
@@ -809,6 +813,16 @@ static esp_err_t api_wave_handler(httpd_req_t *req)
         o += snprintf(chunk + o, sizeof(chunk) - (size_t)o, "]");
         httpd_resp_send_chunk(req, chunk, o);
     }
+    int o = snprintf(chunk, sizeof(chunk), ",\"flags\":[");
+    for (int i = 0; i < cnt; i++) {
+        if (o > (int)sizeof(chunk) - 8) {
+            httpd_resp_send_chunk(req, chunk, o);
+            o = 0;
+        }
+        o += snprintf(chunk + o, sizeof(chunk) - (size_t)o, "%s%u", i ? "," : "", (unsigned)s[i].flags);
+    }
+    o += snprintf(chunk + o, sizeof(chunk) - (size_t)o, "]");
+    httpd_resp_send_chunk(req, chunk, o);
     free(s);
     httpd_resp_send_chunk(req, "}", 1);
     return httpd_resp_send_chunk(req, NULL, 0);
