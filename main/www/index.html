@@ -41,6 +41,7 @@ h1{margin:0;font-size:2.3rem;line-height:1.1;font-weight:680;letter-spacing:.01e
 .drumbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;margin:8px 0 18px;font-size:.9rem;color:var(--muted)}
 .drumbar label{display:flex;align-items:center;gap:6px}
 .key{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+.key.band{width:12px;height:12px;border-radius:2px;opacity:.35}
 
 .readouts{display:grid;grid-template-columns:1fr 1fr;gap:10px 32px;margin-bottom:20px}
 .ro h2{font-size:1.05rem;margin:0 0 4px;font-weight:620;display:flex;align-items:center;gap:8px}
@@ -114,6 +115,8 @@ progress{width:220px;height:10px}
 <div class="drumbar">
   <span><i class="key" style="background:var(--ink0)"></i><span id="k0">Z</span></span>
   <span><i class="key" style="background:var(--ink1)"></i><span id="k1">H</span></span>
+  <span title="An input sample inside the filter window was lost, failed its CRC, or was held while the ADC settled after a SYNC"><i class="key band" style="background:var(--warn)"></i>held input</span>
+  <span title="An input sample inside the filter window was at full scale"><i class="key band" style="background:var(--bad)"></i>clipped</span>
   <label>Window <select id="win"><option>15</option><option>30</option><option selected>60</option><option>120</option></select> s</label>
   <label>Scale <select id="scale">
     <option value="auto" selected>auto per channel</option>
@@ -236,7 +239,7 @@ var $=function(id){return document.getElementById(id);};
 var FAULTS={0:'abnormal reset',1:'I2C init',2:'task init',7:'ADC not found',8:'RTC not answering',
   9:'RTC lost power',10:'I2C bus recovered',11:'1 Hz reference lost',12:'ADC CRC errors',
   13:'late ADC reads',14:'clipping',15:'no wall-clock time',16:'ADC reset or resynced itself'};
-var S={next:0,expect:null,fs:100,buf:[[],[]],lastT:0,cfg:null,acq:null,status:null,dirty:true};
+var S={next:0,expect:null,fs:100,buf:[[],[]],flags:[],lastT:0,cfg:null,acq:null,status:null,dirty:true};
 var MAXSEC=120;
 
 function xhr(method,url,body,cb,ctype){
@@ -284,6 +287,17 @@ function drawDrum(){
       g.strokeStyle=css('--grid2');g.beginPath();g.moveTo(Math.round(x2)+.5,0);g.lineTo(Math.round(x2)+.5,H);g.stroke();
       if(x2>40)g.fillText(utcStr(t),x2+4,H-6);}}
   for(var L=1;L<lanes;L++){g.strokeStyle=css('--grid2');g.beginPath();g.moveTo(0,L*lh+.5);g.lineTo(W,L*lh+.5);g.stroke();}
+
+  // Flagged samples (wave flags): amber = held input (gap, CRC, settling), red = clipped input.
+  // Runs of the same kind merge into one band; a band is at least 2 px so one sample shows.
+  var fb=S.flags,fn=Math.min(fb.length,N),fo=fb.length-fn,fi=0;
+  var kindOf=function(f){return !f?null:(f&8)?'--bad':'--warn';};
+  g.globalAlpha=.22;
+  while(fi<fn){var kd=kindOf(fb[fo+fi]);if(!kd){fi++;continue;}
+    var fj=fi;while(fj+1<fn&&kindOf(fb[fo+fj+1])===kd)fj++;
+    var xa=W-(fn-1-fi)*px-px/2,xb=W-(fn-1-fj)*px+px/2;
+    g.fillStyle=css(kd);g.fillRect(xa,0,Math.max(2,xb-xa),H);fi=fj+1;}
+  g.globalAlpha=1;
 
   var names=S.cfg?S.cfg.ch.map(function(c){return c.name;}):['Z','H'];
   for(var ch=0;ch<2;ch++){
@@ -362,13 +376,15 @@ function poll(){
   xhr('GET','/api/wave?since='+S.next+'&max=1000',null,function(err,d){
     if(err||!d){setTimeout(poll,1500);return;}
     if(d.n>0){
-      if(S.expect!==null&&d.seq0!==S.expect){S.buf[0].push(NaN);S.buf[1].push(NaN);}
-      for(var i=0;i<d.n;i++){S.buf[0].push(d.ch0[i]);S.buf[1].push(d.ch1[i]);}
+      if(S.expect!==null&&d.seq0!==S.expect){S.buf[0].push(NaN);S.buf[1].push(NaN);S.flags.push(0);}
+      var fl=d.flags||[];                       // absent on firmware before the flags field
+      for(var i=0;i<d.n;i++){S.buf[0].push(d.ch0[i]);S.buf[1].push(d.ch1[i]);S.flags.push(fl[i]|0);}
       S.expect=d.seq0+d.n;
       if(d.fs>0)S.fs=d.fs;
       if(d.t0)S.lastT=d.t0+(d.n-1)*1000/S.fs;
       var cap=Math.round(MAXSEC*S.fs)+8;
       for(var c=0;c<2;c++)if(S.buf[c].length>cap)S.buf[c].splice(0,S.buf[c].length-cap);
+      if(S.flags.length>cap)S.flags.splice(0,S.flags.length-cap);
       S.dirty=true;
     }
     S.next=d.next;
