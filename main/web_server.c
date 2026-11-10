@@ -59,6 +59,11 @@ void config_unlock(void) { if (s_cfg_mutex) xSemaphoreGive(s_cfg_mutex); }
 
 static const char *const s_clk_names[] = { "ext", "ledc", "ltc6903" };
 
+static const char *capture_name(unsigned m)
+{
+    return m == ACQ_CAPTURE_MCPWM ? "mcpwm" : "isr";
+}
+
 /* ═════════════════════════════════════════════════════════════════════════
  * Configuration
  * ═════════════════════════════════════════════════════════════════════════ */
@@ -81,6 +86,7 @@ void config_set_defaults(void)
     g_config.ref              = TB_REF_NONE;
     g_config.ref_rising       = 1;
     g_config.rtc              = 0;
+    g_config.capture          = ACQ_CAPTURE_ISR;   /* mcpwm once proven on the bench */
     static const char *const names[ACQ_NCH] = { "Z", "H" };
     for (int c = 0; c < ACQ_NCH; c++) {
         seismo_ch_cfg_t *ch = &g_config.ch[c];
@@ -115,6 +121,7 @@ static void config_sanitize(void)
         g_config.decim = 10;
     }
     if (g_config.ref > TB_REF_RTC) g_config.ref = TB_REF_NONE;
+    if (g_config.capture > ACQ_CAPTURE_MCPWM) g_config.capture = ACQ_CAPTURE_ISR;
     for (int c = 0; c < ACQ_NCH; c++) {
         seismo_ch_cfg_t *ch = &g_config.ch[c];
         ch->name[sizeof(ch->name) - 1] = '\0';
@@ -150,6 +157,8 @@ esp_err_t config_load(void)
         } else if (err == ESP_OK && blob.version < SEISMO_CONFIG_VERSION) {
             memcpy(&g_config, &blob, rd);
             g_config.version = SEISMO_CONFIG_VERSION;
+            /* Fields added since: an older blob may carry struct padding there. */
+            if (blob.version < 2) g_config.capture = ACQ_CAPTURE_ISR;
             ESP_LOGW(TAG, "Config migrated from v%lu", (unsigned long)blob.version);
         } else {
             ESP_LOGW(TAG, "Config blob unusable (v%lu, %u bytes), using defaults",
@@ -554,6 +563,11 @@ esp_err_t config_set_kv(seismo_config_t *c, const char *key, const char *v,
         if (!parse_bool(v, &b)) { *err = "rtc: 0 or 1"; goto bad; }
         if (c->rtc != b) *reboot = true;
         c->rtc = b;
+    } else if (strcmp(key, "capture") == 0) {
+        int m = strcasecmp(v, "isr") == 0 ? ACQ_CAPTURE_ISR : strcasecmp(v, "mcpwm") == 0 ? ACQ_CAPTURE_MCPWM : -1;
+        if (m < 0) { *err = "capture: isr or mcpwm"; goto bad; }
+        if (c->capture != m) *reboot = true;
+        c->capture = (uint8_t)m;
     } else if (allow_wifi && strcmp(key, "wifi_ssid") == 0) {
         if (!v[0] || strlen(v) > 32) { *err = "wifi_ssid: 1-32 bytes"; goto bad; }
         if (strcmp(v, c->wifi_ssid) != 0) *reboot = true;
@@ -601,13 +615,14 @@ int config_export_text(char *out, size_t cap)
         "hostname=%s\nport=%u\nlogin=%u\nuser=%s\n"
         "station=%s\nnetwork=%s\n"
         "clk_src=%s\nclk_hz=%lu\nosr=%u\ndecim=%u\ntaps=%u\n"
-        "ref=%s\nref_edge=%s\nrtc=%u\n",
+        "ref=%s\nref_edge=%s\nrtc=%u\ncapture=%s\n",
         SEISMO_API_VERSION, app->version,
         g_config.hostname, g_config.http_port, g_config.weblogin_enabled, g_config.username,
         g_config.station, g_config.network,
         s_clk_names[g_config.clk_src], (unsigned long)g_config.clk_hz, g_config.osr,
         g_config.decim, g_config.taps,
-        timebase_ref_name((tb_ref_t)g_config.ref), g_config.ref_rising ? "rise" : "fall", g_config.rtc);
+        timebase_ref_name((tb_ref_t)g_config.ref), g_config.ref_rising ? "rise" : "fall", g_config.rtc,
+        capture_name(g_config.capture));
     for (int c = 0; c < ACQ_NCH && n > 0 && (size_t)n < cap; c++) {
         const seismo_ch_cfg_t *ch = &g_config.ch[c];
         n += snprintf(out + n, cap - (size_t)n,
@@ -737,13 +752,14 @@ static esp_err_t api_acq_handler(httpd_req_t *req)
         "\"adc_id\":\"0x%04X\",\"adc_status\":\"0x%04X\",\"clk_src\":\"%s\",\"clk_hz\":%lu,"
         "\"osr\":%u,\"decim\":%u,\"fs_in\":%.4f,\"fs_out\":%.4f,\"delay_ms\":%.2f,"
         "\"n_in\":%llu,\"seq\":%lu,\"crc_errors\":%lu,\"overruns\":%lu,\"stale_frames\":%lu,"
-        "\"status_events\":%lu,\"restarts\":%lu,\"ring_len\":%lu,\"ch\":[",
+        "\"status_events\":%lu,\"restarts\":%lu,\"ring_len\":%lu,\"capture\":\"%s\",\"ch\":[",
         SEISMO_API_VERSION, st.running ? "true" : "false", st.adc_ok ? "true" : "false",
         st.clock_ok ? "true" : "false", st.adc_id, st.adc_status, s_clk_names[g_config.clk_src],
         (unsigned long)st.clk_hz_actual, g_config.osr, g_config.decim, st.fs_in, st.fs_out,
         st.group_delay_s * 1000.0, (unsigned long long)st.n_in, (unsigned long)st.seq,
         (unsigned long)st.crc_errors, (unsigned long)st.overruns, (unsigned long)st.stale_frames,
-        (unsigned long)st.status_events, (unsigned long)st.restarts, (unsigned long)acq_ring_len());
+        (unsigned long)st.status_events, (unsigned long)st.restarts, (unsigned long)acq_ring_len(),
+        capture_name(acq_capture_mode()));
 
     for (int c = 0; c < ACQ_NCH && n < 1900; c++) {
         const seismo_ch_cfg_t *cc = &g_config.ch[c];
@@ -908,11 +924,12 @@ static esp_err_t api_config_get_handler(httpd_req_t *req)
     int n = snprintf(buf, 1536,
         "{\"ok\":true,\"api\":%d,\"hostname\":\"%s\",\"port\":%u,\"login\":%u,\"user\":\"%s\","
         "\"station\":\"%s\",\"network\":\"%s\",\"clk_src\":\"%s\",\"clk_hz\":%lu,\"osr\":%u,"
-        "\"decim\":%u,\"taps\":%u,\"ref\":\"%s\",\"ref_edge\":\"%s\",\"rtc\":%u,\"ch\":[",
+        "\"decim\":%u,\"taps\":%u,\"ref\":\"%s\",\"ref_edge\":\"%s\",\"rtc\":%u,\"capture\":\"%s\",\"ch\":[",
         SEISMO_API_VERSION, host, g_config.http_port, g_config.weblogin_enabled, user,
         g_config.station, g_config.network, s_clk_names[g_config.clk_src],
         (unsigned long)g_config.clk_hz, g_config.osr, g_config.decim, g_config.taps,
-        timebase_ref_name((tb_ref_t)g_config.ref), g_config.ref_rising ? "rise" : "fall", g_config.rtc);
+        timebase_ref_name((tb_ref_t)g_config.ref), g_config.ref_rising ? "rise" : "fall", g_config.rtc,
+        capture_name(g_config.capture));
     for (int c = 0; c < ACQ_NCH; c++) {
         const seismo_ch_cfg_t *ch = &g_config.ch[c];
         char name[20];
@@ -938,7 +955,7 @@ static esp_err_t api_config_post_handler(httpd_req_t *req)
 
     static const char *const keys[] = {
         "hostname", "port", "login", "user", "pass", "station", "network",
-        "clk_src", "clk_hz", "osr", "decim", "taps", "ref", "ref_edge", "rtc",
+        "clk_src", "clk_hz", "osr", "decim", "taps", "ref", "ref_edge", "rtc", "capture",
         "ch0_name", "ch0_pga", "ch0_phase", "ch0_gcal", "ch0_ocal", "ch0_div", "ch0_amp", "ch0_sens",
         "ch1_name", "ch1_pga", "ch1_phase", "ch1_gcal", "ch1_ocal", "ch1_div", "ch1_amp", "ch1_sens",
     };

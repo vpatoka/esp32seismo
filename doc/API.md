@@ -121,6 +121,7 @@ curl 'http://vseismo/api/wave?since=118000&max=1000&order=oldest'
 | `stale_frames` | frames | Frames dropped because they were older than the DRDY count allows (FIFO backlog). Should stay 0. |
 | `status_events` | events | The ADC reset itself (brownout) or resynced without a SYNC from the station |
 | `restarts` | | Acquisition (re)starts since boot |
+| `capture` | | Edge timing in use: `isr` or `mcpwm`. Differs from the `capture` setting only if MCPWM setup failed at boot. |
 | `ring_len` | output samples | Samples the station keeps for `/api/wave`: 131072 in PSRAM, or 4096 in internal RAM when the board has no PSRAM. Divide by `fs_out` for the history in seconds. |
 
 ## /api/acq channel fields
@@ -150,6 +151,7 @@ curl 'http://vseismo/api/wave?since=118000&max=1000&order=oldest'
 | `ref` | `none`, `gps`, `rtc` | Reboot |
 | `ref_edge` | `rise`, `fall` | Reboot |
 | `rtc` | 0, 1 | Reboot |
+| `capture` | `isr` (default), `mcpwm` | Reboot. How DRDY and 1 Hz reference edges are timed. `isr`: a GPIO interrupt reads esp_timer, about 10 µs of jitter under WiFi load. `mcpwm`: one MCPWM capture timer latches both edges in hardware at 6.25 ns, kept as µs (0.3 µs rms rounding). If the capture timer can't be set up, the station falls back to `isr`; `/api/acq` `capture` shows what is in use. |
 | `chN_name` | 1-7 characters | Immediate |
 | `chN_pga` | 1, 2, 4 .. 128 | Restarts acquisition |
 | `chN_phase` | -512..511 modulator clocks | Restarts acquisition |

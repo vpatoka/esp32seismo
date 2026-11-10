@@ -43,3 +43,9 @@ CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_USE_CAPS_ALLOC=y
 CONFIG_SPIRAM_IGNORE_NOTFOUND=y
 CONFIG_SPIRAM_MEMTEST=y
+
+# capture=mcpwm: DRDY and the 1 Hz reference are latched by an MCPWM capture
+# timer. The hardware holds one value per channel, so its ISR must run while
+# flash writes have the cache off, or DRDY edges during an NVS save go
+# uncounted (the GPIO path already runs from IRAM).
+CONFIG_MCPWM_ISR_CACHE_SAFE=y

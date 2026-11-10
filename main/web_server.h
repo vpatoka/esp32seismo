@@ -16,7 +16,7 @@
 
 #define NVS_NAMESPACE          "seismo"
 #define NVS_KEY_CONFIG         "config"
-#define SEISMO_CONFIG_VERSION  1
+#define SEISMO_CONFIG_VERSION  2       /* 2: capture */
 
 /* HTTP API contract version, reported as "api" in /api/status, /api/config,
  * /api/acq and /api/fw/info. Additive changes only. See doc/API.md. */
@@ -57,6 +57,8 @@ typedef struct {
     uint8_t  ref_rising;
     uint8_t  rtc;            /* DS323x fitted */
     seismo_ch_cfg_t ch[ACQ_NCH];
+    /* v2 */
+    uint8_t  capture;        /* acq_capture_t: edge timing, isr or mcpwm */
 } seismo_config_t;
 
 extern seismo_config_t g_config;

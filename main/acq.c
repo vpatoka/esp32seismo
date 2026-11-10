@@ -39,6 +39,8 @@
 #include <string.h>
 #include "driver/gpio.h"
 #include "driver/ledc.h"
+#include "driver/mcpwm_cap.h"
+#include "esp_rom_sys.h"
 #include "esp_clk_tree.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -112,19 +114,158 @@ static bool s_ledc_on;
  * DRDY
  * ═════════════════════════════════════════════════════════════════════════ */
 
+/* Count one DRDY edge at time t (esp_timer us). ISR context. */
+static inline void IRAM_ATTR drdy_record(int64_t t, BaseType_t *woken)
+{
+    uint32_t k = s_drdy_cnt;
+    s_drdy_ts[k & (DRDY_TS_LEN - 1)] = t;
+    s_drdy_cnt = k + 1;
+    if (s_task) vTaskNotifyGiveFromISR(s_task, woken);
+}
+
 static void IRAM_ATTR drdy_isr(void *arg)
 {
     (void)arg;
-    uint32_t k = s_drdy_cnt;
-    s_drdy_ts[k & (DRDY_TS_LEN - 1)] = esp_timer_get_time();
-    s_drdy_cnt = k + 1;
     BaseType_t woken = pdFALSE;
-    if (s_task) vTaskNotifyGiveFromISR(s_task, &woken);
+    drdy_record(esp_timer_get_time(), &woken);
     portYIELD_FROM_ISR(woken);
 }
 
-static void drdy_init(void)
+/* ── MCPWM capture ─────────────────────────────────────────────────────────
+ * One capture timer for DRDY and the 1 Hz reference, so both edges are
+ * latched by the same hardware counter: no interrupt latency in either time,
+ * and their difference (what the rate loop and the pps model use) is exact
+ * to the counter resolution. The 32-bit count (160 MHz on the C5, wraps in
+ * 26.8 s) is unwrapped against esp_timer, which only has to be right to a
+ * few seconds, and kept as esp_timer microseconds so the rest of the code
+ * does not change. The microsecond rounding (0.29 us rms) is the floor now,
+ * against ~10 us of ISR jitter before.
+ *
+ * Needs CONFIG_MCPWM_ISR_CACHE_SAFE: the hardware latches one value per
+ * channel, so the ISR must run during flash writes or DRDY edges go uncounted.
+ */
+static acq_capture_t s_cap_mode = ACQ_CAPTURE_ISR;
+static mcpwm_cap_timer_handle_t s_cap_timer;
+static mcpwm_cap_channel_handle_t s_cap_drdy;
+static uint32_t s_cap_res;                  /* counts per second */
+static int64_t  s_cap_div;                  /* counts per microsecond */
+static portMUX_TYPE s_cap_mux = portMUX_INITIALIZER_UNLOCKED;
+static int64_t  s_cap64_last;               /* unwrapped count of the newest edge so far */
+static int64_t  s_cap_esp_last;             /* esp_timer when it was seen */
+static int64_t  s_cap_off_us;               /* esp_timer us = count / s_cap_div + this */
+static volatile bool s_cap_calib;           /* next DRDY-channel event is the soft catch */
+static volatile bool s_drdy_armed;
+
+/* Capture count (32 bit) to esp_timer microseconds. ISR context. The esp
+ * time of the call bounds where the full count can be: within ISR latency,
+ * far inside the +-13 s that 32 bits leave. Edges from two channels may be
+ * serviced out of order; only a newer count moves the reference. */
+static int64_t IRAM_ATTR cap_to_us(uint32_t cap)
 {
+    int64_t now = esp_timer_get_time();
+    portENTER_CRITICAL_ISR(&s_cap_mux);
+    int64_t expect = s_cap64_last + (now - s_cap_esp_last) * s_cap_div;
+    int64_t cap64 = expect + (int32_t)(cap - (uint32_t)expect);
+    if (cap64 > s_cap64_last) { s_cap64_last = cap64; s_cap_esp_last = now; }
+    portEXIT_CRITICAL_ISR(&s_cap_mux);
+    return (cap64 + s_cap_div / 2) / s_cap_div + s_cap_off_us;
+}
+
+static bool IRAM_ATTR drdy_cap_cb(mcpwm_cap_channel_handle_t ch, const mcpwm_capture_event_data_t *e, void *ctx)
+{
+    (void)ch; (void)ctx;
+    if (s_cap_calib) {                      /* soft catch: count and esp_timer read together */
+        s_cap64_last = e->cap_value;
+        s_cap_esp_last = esp_timer_get_time();
+        s_cap_off_us = s_cap_esp_last - s_cap64_last / s_cap_div;
+        s_cap_calib = false;
+        return false;
+    }
+    if (!s_drdy_armed) return false;
+    BaseType_t woken = pdFALSE;
+    drdy_record(cap_to_us(e->cap_value), &woken);
+    return woken == pdTRUE;
+}
+
+static esp_err_t capture_init(void)
+{
+    const mcpwm_capture_timer_config_t tc = {
+        .group_id = 0,
+        .clk_src = MCPWM_CAPTURE_CLK_SRC_DEFAULT,
+    };
+    esp_err_t err = mcpwm_new_capture_timer(&tc, &s_cap_timer);
+    if (err != ESP_OK) return err;
+    mcpwm_capture_timer_get_resolution(s_cap_timer, &s_cap_res);
+    s_cap_div = s_cap_res / 1000000;
+    if (s_cap_div < 1 || s_cap_res % 1000000) {
+        ESP_LOGE(TAG, "Capture timer at %lu Hz: not a whole number of MHz", (unsigned long)s_cap_res);
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+    const mcpwm_capture_channel_config_t cc = {
+        .gpio_num = ADC_DRDY_GPIO,
+        .prescale = 1,
+        .flags.neg_edge = true,
+    };
+    if ((err = mcpwm_new_capture_channel(s_cap_timer, &cc, &s_cap_drdy)) != ESP_OK) return err;
+    gpio_pullup_en(ADC_DRDY_GPIO);          /* the Click has 4.7k too */
+    const mcpwm_capture_event_callbacks_t cbs = { .on_cap = drdy_cap_cb };
+    if ((err = mcpwm_capture_channel_register_event_callbacks(s_cap_drdy, &cbs, NULL)) != ESP_OK) return err;
+    if ((err = mcpwm_capture_channel_enable(s_cap_drdy)) != ESP_OK) return err;
+    if ((err = mcpwm_capture_timer_enable(s_cap_timer)) != ESP_OK) return err;
+    if ((err = mcpwm_capture_timer_start(s_cap_timer)) != ESP_OK) return err;
+
+    /* Tie the counter to esp_timer: a soft catch latches the count now. */
+    s_cap_calib = true;
+    if ((err = mcpwm_capture_channel_trigger_soft_catch(s_cap_drdy)) != ESP_OK) return err;
+    for (int i = 0; i < 100 && s_cap_calib; i++) esp_rom_delay_us(10);
+    if (s_cap_calib) { s_cap_calib = false; return ESP_ERR_TIMEOUT; }
+    ESP_LOGI(TAG, "DRDY on MCPWM capture, %lu MHz counter", (unsigned long)(s_cap_res / 1000000));
+    return ESP_OK;
+}
+
+/* Reference-edge channels on the same timer: the callback forwards the edge time. */
+static bool IRAM_ATTR ref_cap_cb(mcpwm_cap_channel_handle_t ch, const mcpwm_capture_event_data_t *e, void *ctx)
+{
+    (void)ch;
+    void (*on_edge)(int64_t) = (void (*)(int64_t))ctx;
+    on_edge(cap_to_us(e->cap_value));
+    return false;                           /* on_edge notifies its own task */
+}
+
+esp_err_t acq_capture_add(int gpio, bool rising, void (*on_edge)(int64_t t_us))
+{
+    if (s_cap_mode != ACQ_CAPTURE_MCPWM || !on_edge) return ESP_ERR_NOT_SUPPORTED;
+    const mcpwm_capture_channel_config_t cc = {
+        .gpio_num = gpio,
+        .prescale = 1,
+        .flags.pos_edge = rising,
+        .flags.neg_edge = !rising,
+    };
+    mcpwm_cap_channel_handle_t ch;
+    esp_err_t err = mcpwm_new_capture_channel(s_cap_timer, &cc, &ch);
+    if (err != ESP_OK) return err;
+    gpio_pullup_en(gpio);
+    const mcpwm_capture_event_callbacks_t cbs = { .on_cap = ref_cap_cb };
+    if ((err = mcpwm_capture_channel_register_event_callbacks(ch, &cbs, (void *)on_edge)) != ESP_OK) return err;
+    return mcpwm_capture_channel_enable(ch);
+}
+
+acq_capture_t acq_capture_mode(void)
+{
+    return s_cap_mode;
+}
+
+static void drdy_init(acq_capture_t want)
+{
+    if (want == ACQ_CAPTURE_MCPWM) {
+        esp_err_t err = capture_init();
+        if (err == ESP_OK) {
+            s_cap_mode = ACQ_CAPTURE_MCPWM;
+            return;
+        }
+        ESP_LOGE(TAG, "MCPWM capture setup: %s, using the GPIO interrupt", esp_err_to_name(err));
+    }
+    s_cap_mode = ACQ_CAPTURE_ISR;
     const gpio_config_t io = {
         .pin_bit_mask = 1ULL << ADC_DRDY_GPIO,
         .mode = GPIO_MODE_INPUT,
@@ -135,6 +276,14 @@ static void drdy_init(void)
     gpio_config(&io);
     gpio_isr_handler_add(ADC_DRDY_GPIO, drdy_isr, NULL);
     gpio_intr_disable(ADC_DRDY_GPIO);
+}
+
+/* Start or stop counting DRDY edges, whichever path delivers them. */
+static void drdy_arm(bool on)
+{
+    s_drdy_armed = on;
+    if (s_cap_mode == ACQ_CAPTURE_MCPWM) return;    /* the capture callback checks the flag */
+    if (on) gpio_intr_enable(ADC_DRDY_GPIO); else gpio_intr_disable(ADC_DRDY_GPIO);
 }
 
 /* Time of DRDY number idx. cnt is a count read after idx happened. Entries
@@ -549,12 +698,12 @@ static void resume_stream(void)
     ulTaskNotifyTake(pdTRUE, 0);
     s_seen = s_drdy_cnt;
     s_last_evt = esp_timer_get_time();
-    gpio_intr_enable(ADC_DRDY_GPIO);
+    drdy_arm(true);
 }
 
 static bool reconfigure(void)
 {
-    gpio_intr_disable(ADC_DRDY_GPIO);
+    drdy_arm(false);
     uint32_t clk = clock_setup(&s_set);
     vTaskDelay(pdMS_TO_TICKS(5));
 
@@ -678,7 +827,7 @@ static void acq_task(void *arg)
  * Public
  * ═════════════════════════════════════════════════════════════════════════ */
 
-esp_err_t acq_start(const acq_settings_t *s)
+esp_err_t acq_start(const acq_settings_t *s, acq_capture_t capture)
 {
     /* PSRAM when the build has it, else the old internal-RAM size. */
     s_ring_len = ACQ_RING_LEN_PSRAM;
@@ -697,7 +846,7 @@ esp_err_t acq_start(const acq_settings_t *s)
         ESP_LOGE(TAG, "SPI bus init: %s", esp_err_to_name(err));
         return err;
     }
-    drdy_init();
+    drdy_init(capture);
     if (xTaskCreate(acq_task, "acq", 4096, NULL, PRIO_ACQ, &s_task) != pdPASS) return ESP_ERR_NO_MEM;
     return ESP_OK;
 }
@@ -713,7 +862,7 @@ void acq_apply(const acq_settings_t *s)
 void acq_pause(void)
 {
     s_paused = true;
-    gpio_intr_disable(ADC_DRDY_GPIO);
+    drdy_arm(false);
 }
 
 void acq_request_sync(void) { s_sync_req = true; }

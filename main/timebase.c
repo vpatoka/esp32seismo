@@ -110,13 +110,19 @@ static volatile int64_t s_ntp_last_us;
 static bool s_sntp_started;
 static bool s_use_rtc;
 
-static void IRAM_ATTR ref_isr(void *arg)
+/* A reference edge at esp_timer time t. ISR context, from either path. */
+static void IRAM_ATTR ref_edge(int64_t t)
 {
-    (void)arg;
-    s_edge_t = esp_timer_get_time();
+    s_edge_t = t;
     BaseType_t woken = pdFALSE;
     if (s_task) vTaskNotifyGiveFromISR(s_task, &woken);
     portYIELD_FROM_ISR(woken);
+}
+
+static void IRAM_ATTR ref_isr(void *arg)
+{
+    (void)arg;
+    ref_edge(esp_timer_get_time());
 }
 
 const char *timebase_ref_name(tb_ref_t r)
@@ -612,17 +618,25 @@ esp_err_t timebase_init(tb_ref_t ref, bool rising, bool use_rtc, i2c_master_bus_
     }
 
     if (ref != TB_REF_NONE) {
-        const gpio_config_t io = {
-            .pin_bit_mask = 1ULL << REF_1HZ_GPIO,
-            .mode = GPIO_MODE_INPUT,
-            .pull_up_en = GPIO_PULLUP_ENABLE,   /* SQW is open drain; GPS PPS ignores it */
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = rising ? GPIO_INTR_POSEDGE : GPIO_INTR_NEGEDGE,
-        };
-        gpio_config(&io);
-        gpio_isr_handler_add(REF_1HZ_GPIO, ref_isr, NULL);
-        ESP_LOGI(TAG, "1 Hz reference: %s, %s edge on GPIO%d", timebase_ref_name(ref),
-                 rising ? "rising" : "falling", REF_1HZ_GPIO);
+        /* On the acquisition capture timer when it runs, so PPS and DRDY share
+         * one hardware counter; the GPIO interrupt otherwise. */
+        esp_err_t cerr = acq_capture_add(REF_1HZ_GPIO, rising, ref_edge);
+        if (cerr != ESP_OK) {
+            if (cerr != ESP_ERR_NOT_SUPPORTED) {
+                ESP_LOGE(TAG, "1 Hz reference capture channel: %s, using the GPIO interrupt", esp_err_to_name(cerr));
+            }
+            const gpio_config_t io = {
+                .pin_bit_mask = 1ULL << REF_1HZ_GPIO,
+                .mode = GPIO_MODE_INPUT,
+                .pull_up_en = GPIO_PULLUP_ENABLE,   /* SQW is open drain; GPS PPS ignores it */
+                .pull_down_en = GPIO_PULLDOWN_DISABLE,
+                .intr_type = rising ? GPIO_INTR_POSEDGE : GPIO_INTR_NEGEDGE,
+            };
+            gpio_config(&io);
+            gpio_isr_handler_add(REF_1HZ_GPIO, ref_isr, NULL);
+        }
+        ESP_LOGI(TAG, "1 Hz reference: %s, %s edge on GPIO%d, %s", timebase_ref_name(ref),
+                 rising ? "rising" : "falling", REF_1HZ_GPIO, cerr == ESP_OK ? "MCPWM capture" : "GPIO interrupt");
     } else {
         ESP_LOGI(TAG, "No 1 Hz reference: sample rate is the nominal one");
     }

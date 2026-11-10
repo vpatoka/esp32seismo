@@ -44,6 +44,13 @@
 #define ACQ_F_UNSETTLED 0x04      /* sinc3 settling after a SYNC, inputs held */
 #define ACQ_F_CLIP      0x08      /* an input sample was at full scale */
 
+/* How DRDY and 1 Hz reference edges get their time. Chosen at boot. */
+typedef enum {
+    ACQ_CAPTURE_ISR = 0,  /* GPIO interrupt reads esp_timer: ~10 us jitter under WiFi load */
+    ACQ_CAPTURE_MCPWM,    /* MCPWM capture timer latches the edge in hardware: 6.25 ns
+                             counts, kept as us in the esp_timer domain */
+} acq_capture_t;
+
 typedef enum {
     ACQ_CLK_EXT = 0,      /* oscillator on CLKIN, LTC6903 output cut */
     ACQ_CLK_LEDC,         /* GPIO7 LEDC from XTAL, integer divider   */
@@ -97,8 +104,24 @@ typedef struct {
     int32_t  v[ACQ_NCH];
 } acq_sample_t;
 
-/** @brief Create the task and start acquiring with s. */
-esp_err_t acq_start(const acq_settings_t *s);
+/**
+ * @brief Create the task and start acquiring with s.
+ * @param capture  edge timing for the whole run; ACQ_CAPTURE_MCPWM falls back
+ *                 to the ISR path if the capture timer cannot be set up
+ */
+esp_err_t acq_start(const acq_settings_t *s, acq_capture_t capture);
+
+/** @brief Edge timing in use (after any fallback). */
+acq_capture_t acq_capture_mode(void);
+
+/**
+ * @brief Add a capture channel on the acquisition capture timer, so that edge
+ *        shares a time base with DRDY. For the 1 Hz reference.
+ * @param on_edge  called from the capture ISR with the edge time in esp_timer
+ *                 microseconds; must be IRAM_ATTR and ISR-safe
+ * @return ESP_ERR_NOT_SUPPORTED when capture is not in use
+ */
+esp_err_t acq_capture_add(int gpio, bool rising, void (*on_edge)(int64_t t_us));
 
 /** @brief Apply new settings: the task reconfigures itself and restarts. */
 void acq_apply(const acq_settings_t *s);

@@ -260,7 +260,7 @@ curl --data-binary @vseismo.cfg http://vseismo/api/config/import
 |---|---|
 | Acquisition | `clk_src`, `clk_hz`, `osr`, `decim`, `taps` |
 | Per channel (N = 0, 1) | `chN_name`, `chN_pga`, `chN_phase`, `chN_gcal`, `chN_ocal`, `chN_div`, `chN_amp`, `chN_sens` |
-| Timing | `ref`, `ref_edge`, `rtc` |
+| Timing | `ref`, `ref_edge`, `rtc`, `capture` |
 | Station | `station`, `network` |
 | Network | `hostname`, `port`, `login`, `user`, `pass` |
 

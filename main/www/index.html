@@ -174,6 +174,9 @@ progress{width:220px;height:10px}
         <option value="none">None</option><option value="gps">GPS PPS</option><option value="rtc">DS3231 SQW</option></select></label>
       <label class="f"><span>Reference edge</span><select name="ref_edge"><option value="rise">Rising</option><option value="fall">Falling</option></select></label>
       <label class="f"><span>DS3231 holdover clock fitted</span><input type="checkbox" name="rtc"></label>
+      <label class="f"><span>Edge timing</span><select name="capture">
+        <option value="isr">GPIO interrupt (default)</option><option value="mcpwm">MCPWM hardware capture</option></select>
+        <em>For DRDY and the 1 Hz reference. Reboots.</em></label>
     </div>
     <dl class="kv" id="timekv" style="margin-top:14px"></dl>
     <div class="row"><button class="primary" data-save="p-time">Save timing settings</button><span class="msg" data-msg="p-time"></span></div>
@@ -492,7 +495,7 @@ function loadConfig(){
   xhr('GET','/api/config',null,function(err,c){if(err||!c)return;S.cfg=c;
     var set=function(n,v){var el=document.querySelector('[name="'+n+'"]');if(!el)return;
       if(el.type==='checkbox')el.checked=!!v;else el.value=v;};
-    ['clk_src','clk_hz','osr','decim','taps','station','network','ref','ref_edge','rtc','hostname','port','login','user'].forEach(function(k){set(k,c[k]);});
+    ['clk_src','clk_hz','osr','decim','taps','station','network','ref','ref_edge','rtc','capture','hostname','port','login','user'].forEach(function(k){set(k,c[k]);});
     c.ch.forEach(function(ch,i){for(var k in ch)set('ch'+i+'_'+k,ch[k]);$('k'+i).textContent=ch.name;});
   });
 }
