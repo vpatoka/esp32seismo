@@ -674,10 +674,11 @@ static esp_err_t api_status_handler(httpd_req_t *req)
         snprintf(ip6, sizeof(ip6), IPV6STR, IPV62STR(a6));
     }
     int64_t utc_us = timebase_esp_to_utc_us(esp_timer_get_time());
-    char fsm[24], appm[24], espm[24], temp[16];
+    char fsm[24], appm[24], espm[24], sigm[24], temp[16];
     num(fsm, sizeof(fsm), tb.rate_valid ? tb.fs_measured : NAN, 4);
-    num(appm, sizeof(appm), tb.rate_valid ? tb.adc_ppm : NAN, 2);
-    num(espm, sizeof(espm), tb.rate_valid ? tb.esp_ppm : NAN, 2);
+    num(appm, sizeof(appm), tb.rate_valid ? tb.adc_ppm : NAN, 3);
+    num(espm, sizeof(espm), tb.rate_valid ? tb.esp_ppm : NAN, 3);
+    num(sigm, sizeof(sigm), tb.rate_valid ? tb.rate_sigma_ppm : NAN, 4);
     num(temp, sizeof(temp), tb.rtc_online ? tb.rtc_temp_c : NAN, 2);
 
     char buf[1400];
@@ -687,7 +688,8 @@ static esp_err_t api_status_handler(httpd_req_t *req)
         "\"station\":\"%s\",\"network\":\"%s\",\"utc_ms\":%lld,"
         "\"time\":{\"valid\":%s,\"src\":\"%s\",\"ntp_syncs\":%lu,\"ntp_age\":%lld},"
         "\"ref\":{\"type\":\"%s\",\"edge\":\"%s\",\"seen\":%s,\"edges\":%lu,\"age_ms\":%lld,"
-        "\"rate_valid\":%s,\"fs\":%s,\"adc_ppm\":%s,\"esp_ppm\":%s},"
+        "\"rate_valid\":%s,\"fs\":%s,\"adc_ppm\":%s,\"esp_ppm\":%s,"
+        "\"rate_sigma_ppm\":%s,\"rate_points\":%lu,\"rate_rejects\":%lu},"
         "\"rtc\":{\"enabled\":%s,\"online\":%s,\"model\":\"%s\",\"osf\":%s,\"temp\":%s},"
         "\"wifi\":{\"mode\":\"%s\",\"up\":%s,\"ssid\":\"%s\",\"rssi\":%d,\"ch\":%d,\"band\":\"%s\","
         "\"ip\":\"%s\",\"ip6\":\"%s\"},"
@@ -700,6 +702,7 @@ static esp_err_t api_status_handler(httpd_req_t *req)
         timebase_ref_name(tb.ref), tb.ref_rising ? "rise" : "fall", tb.ref_seen ? "true" : "false",
         (unsigned long)tb.ref_edges, (long long)tb.ref_age_ms,
         tb.rate_valid ? "true" : "false", fsm, appm, espm,
+        sigm, (unsigned long)tb.rate_points, (unsigned long)tb.rate_rejects,
         tb.rtc_enabled ? "true" : "false", tb.rtc_online ? "true" : "false", tb.rtc_model,
         tb.rtc_osf ? "true" : "false", temp,
         g_wifi_mode == SEISMO_WIFI_AP_PROVISIONING ? "ap" : "sta",

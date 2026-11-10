@@ -27,6 +27,31 @@ The API is the product. The web page is one client of it, and it gets no private
 | GET | `/portal`, `/api/wifi/scan`, `/api/wifi/status` | WiFi setup |
 | POST | `/api/wifi/connect`, `/api/wifi/forget` | Save or clear WiFi credentials |
 
+## /api/status: 1 Hz reference
+
+```
+curl -s http://vseismo/api/status | jq .ref
+{"type":"gps","edge":"rise","seen":true,"edges":1834,"age_ms":412,
+ "rate_valid":true,"fs":1000.0234,"adc_ppm":23.412,"esp_ppm":11.991,
+ "rate_sigma_ppm":0.0141,"rate_points":300,"rate_rejects":1}
+```
+
+The rate is the slope of a least-squares line through the ADC sample position at each reference edge, over the last 300 edges. It is not an average of second-to-second counts, which would be about 100 times noisier for the same edges.
+
+| Field | Unit | Meaning |
+|---|---|---|
+| `type`, `edge` | | `none`, `gps` or `rtc`; `rise` or `fall` |
+| `seen`, `edges`, `age_ms` | | Any edge since boot, edge count, time since the last one |
+| `rate_valid` | | The fit holds at least 10 edges. `false` for 10 s after an acquisition restart, a reference gap over 30 s, or 5 outliers in a row. |
+| `fs` | SPS | Measured ADC input rate |
+| `adc_ppm` | ppm | Measured rate against nominal: the CLKIN error |
+| `esp_ppm` | ppm | ESP32 timer against the reference: the board crystal error |
+| `rate_sigma_ppm` | ppm | 1σ uncertainty of `adc_ppm` from the fit residuals. Shrinks as N^-1.5 while the window fills, then holds. Rising with a full window means timing jitter went up (WiFi load, a noisy PPS). |
+| `rate_points` | edges | Edges in the fit window, up to 300 |
+| `rate_rejects` | edges | Edges since boot that were a whole second apart but far off the fit (over 0.5 samples or 200 µs) and were dropped. An occasional one is a bad timestamp; a steady climb points at the reference or the wiring. |
+
+`fs`, `adc_ppm`, `esp_ppm` and `rate_sigma_ppm` are `null` while `rate_valid` is `false`. Edges that aren't a whole number of seconds apart (within 20 ms) are ignored and not counted as rejects.
+
 ## /api/wave
 
 ```
