@@ -15,6 +15,7 @@
 #include "timebase.h"
 #include "web_server.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/time.h>
@@ -70,6 +71,18 @@ static int cmd_status(int argc, char **argv)
                (long)(tv.tv_usec / 1000), t.time_src);
     } else {
         printf("utc        no wall-clock time yet\n");
+    }
+    {
+        static const char *const what[] = {
+            [TB_TQ_NONE] = "none, samples carry no UTC",
+            [TB_TQ_RTC]  = "rtc, RTC seed without NTP",
+            [TB_TQ_NTP]  = "ntp, system clock slewed at 500 ppm max",
+            [TB_TQ_PPS]  = "pps, sample count against GPS PPS",
+        };
+        printf("timestamps %s", what[t.quality <= TB_TQ_PPS ? t.quality : TB_TQ_NONE]);
+        if (fabs(t.slew_ms) >= 0.05) printf(", slewing %+.1f ms", t.slew_ms);
+        if (t.pps_naming_errors) printf(", PPS second renamed %lux", (unsigned long)t.pps_naming_errors);
+        printf("\n");
     }
     printf("ntp        %lu syncs, last %lld s ago\n", (unsigned long)t.ntp_syncs, (long long)t.ntp_age_s);
     if (t.ref != TB_REF_NONE) {

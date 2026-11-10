@@ -428,8 +428,11 @@ function status(){
     $('code').textContent=s.network+'.'+s.station;
     $('sub').textContent='vseismo '+s.fw+', up '+dur(s.uptime);
     if(s.time.valid){$('utc').textContent=utcStr(s.utc_ms,true)+' UTC';}
-    setDot('d-time',s.time.src==='ntp'?'ok':s.time.valid?'warn':'bad');
-    $('s-time').textContent=s.time.src==='ntp'?'NTP, synced '+dur(s.time.ntp_age)+' ago':s.time.valid?'RTC holdover':'not set';
+    var tq=s.time.quality||(s.time.src==='ntp'?'ntp':s.time.valid?'rtc':'none');   // older firmware: no quality
+    setDot('d-time',tq==='pps'||tq==='ntp'?'ok':tq==='rtc'?'warn':'bad');
+    var ntpTxt=s.time.ntp_age>=0?'NTP synced '+dur(s.time.ntp_age)+' ago':'no NTP yet';
+    $('s-time').textContent=tq==='pps'?'GPS PPS, '+ntpTxt:tq==='ntp'?'NTP, synced '+dur(s.time.ntp_age)+' ago':
+      tq==='rtc'?'RTC holdover':'not set';
     var r=s.ref;
     if(r.type==='none'){setDot('d-ref','');$('s-ref').textContent='none, rate is nominal';}
     else{setDot('d-ref',r.rate_valid?'ok':r.seen?'warn':'bad');
@@ -447,6 +450,10 @@ function status(){
     $('timesum').textContent=s.time.src+', reference '+r.type;
     $('timekv').innerHTML=kv([['Wall clock',s.time.valid?utcStr(s.utc_ms,true)+' UTC ('+s.time.src+')':'not set'],
       ['NTP syncs',s.time.ntp_syncs+(s.time.ntp_age>=0?', last '+dur(s.time.ntp_age)+' ago':'')],
+      ['Sample timestamps',({pps:'GPS PPS: from the sample count, µs-grade',ntp:'NTP, slewed: ms-grade, never steps',
+        rtc:'RTC seed, no NTP yet: seconds-grade',none:'none: samples carry no UTC'})[tq]+
+        (s.time.slew_ms!=null&&Math.abs(s.time.slew_ms)>=0.05?', slewing '+fmt(s.time.slew_ms,1)+' ms':'')+
+        (s.time.pps_naming_errors?', PPS second renamed '+s.time.pps_naming_errors+'×':'')],
       ['Reference edges',r.edges+(r.age_ms>=0?', last '+fmt(r.age_ms/1000,1)+' s ago':'')],
       ['Measured ADC rate',r.rate_valid?fmt(r.fs,4)+' SPS ('+sgn(r.adc_ppm)+' ± '+fmt(r.rate_sigma_ppm,sgd)+' ppm)':
         r.type==='none'?'needs a 1 Hz reference':'measuring'],
