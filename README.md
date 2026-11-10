@@ -35,7 +35,11 @@
   - [Power](#power)
 - [Timing](#timing)
   - [ADC Clock](#adc-clock)
-  - [Time Labels and the 1 Hz Reference](#time-labels-and-the-1-hz-reference)
+  - [Wall Clock](#wall-clock)
+  - [Rate Measurement](#rate-measurement)
+  - [Sample Timestamps](#sample-timestamps)
+  - [Edge Timing](#edge-timing)
+  - [Bench Checks for Timing](#bench-checks-for-timing)
 - [Firmware Architecture](#firmware-architecture)
 - [Talking to the Station](#talking-to-the-station)
   - [First Boot](#first-boot)
@@ -66,7 +70,8 @@ The infrastructure (WiFi on 2.4 and 5 GHz, captive portal, OTA with rollback, US
 | Phase | Content | State |
 |---|---|---|
 | 1 | ADS131M02 driver, acquisition, FIR decimation, timing, tuning page, portal, OTA, console | built, not yet on hardware |
-| Bench | Pins, CLKIN modification, shorted-input floor, offset trim sign, CRC check | next |
+| 1b | Timing: PPS rate fit, sample-count timestamps, slewed SNTP clock, MCPWM edge capture (opt-in), PSRAM ring | built, host-simulated, not yet on hardware |
+| Bench | Pins, CLKIN modification, shorted-input floor, offset trim sign, CRC check, [timing checks](#bench-checks-for-timing) | next |
 | 2 | PSN-ADC24 serial protocol on UART0, so WinSDR sees a PSN board | |
 | 3 | Minimum-phase FIR, GPS NMEA if needed, channel phase match, enclosure | |
 
@@ -74,9 +79,12 @@ The infrastructure (WiFi on 2.4 and 5 GHz, captive portal, OTA with rollback, US
 
 - **Simultaneous sampling** of both channels on one ADS131M02, at 1000 SPS from an 8.192 MHz clock
 - **Decimating FIR** down to 100 SPS: 201 taps, linear phase, integer math on the sample path
-- **UTC timestamps** on every output sample, corrected for the filter delay
+- **UTC timestamps** on every output sample, corrected for the ADC and FIR delay: from the sample count against GPS PPS (µs-grade), or from an SNTP clock that is slewed, never stepped. Each sample says which.
+- **Every sample period counted**: a sample read late or failing its CRC is held at the last good value and flagged, so the time grid never slips
 - **Three ADC clock paths**: external oscillator, crystal-derived LEDC, or the stock LTC6903
-- **Rate measurement** against a GPS PPS or DS3231 1 Hz edge, in ppm
+- **Rate measurement** against a GPS PPS or DS3231 1 Hz edge: a least-squares fit over 300 edges, to about 0.01 ppm, with its own uncertainty
+- **Hardware edge capture** (opt-in): DRDY and the 1 Hz edge latched by an MCPWM timer, free of interrupt jitter
+- **22 minutes of history** in PSRAM, with catch-up reads for a recorder that fell behind
 - **Tuning page**: live drum-recorder trace, per-channel readouts in counts, µV, mV and µm/s, a noise spectrum, settings, bench tests
 - **Bench tests** without a soldering iron: shorted inputs, test levels, offset zero, filter sync
 - **WiFi** on 2.4 and 5 GHz, IPv4 and IPv6, open setup AP with a captive portal
@@ -144,11 +152,63 @@ The [carrier board](hardware/carrier/README.md) holds the DevKit, the ADC 15 Cli
 | ESP32 LEDC, 48 MHz XTAL ÷ 6 | ±10 to 20 ppm | 976.5625 SPS | `ledc` |
 | On-board LTC6903 | about ±1.1 % plus drift | about 1000 SPS | `ltc6903` |
 
-### Time Labels and the 1 Hz Reference
+### Wall Clock
 
-- **Wall clock:** SNTP sets it, hourly, from four servers. An optional DS3231 seeds it at boot and holds it between syncs.
-- **Timestamps:** each output sample carries its DRDY time minus the FIR group delay, mapped to UTC.
-- **Rate reference:** a 1 Hz edge on GPIO23 (GPS PPS or DS3231 SQW) measures the true sample rate in ppm, whatever drives CLKIN. With GPS, the PPS edge defines the second and SNTP only names it, so no NMEA parsing is needed.
+SNTP sets the system clock hourly from four servers, in immediate mode, so log times are exact. An optional DS3231 seeds it at boot and holds it between syncs. Sample timestamps don't follow the system clock's steps; see below.
+
+### Rate Measurement
+
+A 1 Hz edge on GPIO23 (GPS PPS or DS3231 SQW) is compared against the ADC sample count. At each edge the firmware interpolates the fractional sample position, then fits a straight line through the last 300 positions. The slope is the true sample rate, whatever drives CLKIN; the same fit gives the ESP32 crystal error.
+
+- **Why a fit:** averaging second-to-second counts turns timing jitter straight into rate noise (about 1.4 ppm at 10 µs of interrupt jitter). The fitted slope has error σ·√(12/N³), about 0.01 ppm from the same edges.
+- **Robust:** edges at the wrong spacing are ignored, edges far off the line are dropped as outliers, and the fit restarts after a gap over 30 s, five outliers in a row, or an acquisition restart.
+- **Reported:** `/api/status` `ref` gives the rate, its ppm error, the fit's own 1σ, the edge count and the rejects.
+
+### Sample Timestamps
+
+An output sample stands for an input-sample position: the count at its newest input, minus the ADC sinc³ delay (1.5 periods) and the FIR delay ((taps − 1) / 2). That position is turned into UTC by one of two models. Every sample records which one, as its time quality.
+
+| Quality | When | How | Grade |
+|---|---|---|---|
+| `pps` | GPS PPS and a valid rate fit | Position on the fitted line through the PPS edges. The PPS edge defines the second, SNTP only names it (to the nearest second). | µs |
+| `ntp` | SNTP, no usable PPS | DRDY time through a sample clock that follows the system clock but changes rate by at most 500 ppm | ms, never steps |
+| `rtc` | DS3231 seed, no SNTP yet | Same, from the RTC-seeded clock | seconds |
+| `none` | No wall-clock time | Samples carry no UTC | |
+
+- **No steps:** an SNTP correction of 10 ms is slewed into the sample clock over 20 s. Only a change over 0.5 s (a leap second, a bad RTC seed) is applied at once.
+- **Holdover:** the `pps` model holds for 30 s after the last good edge. Meanwhile the sample clock is steered to PPS time, with the crystal drift fed forward, so losing PPS hands over to `ntp` without a jump.
+- **DS3231 SQW** improves the rate only. Its edges aren't UTC seconds, so it never gives `pps`.
+- **No NMEA needed:** with GPS, SNTP names the second the PPS edge starts.
+
+Host simulation, with the real timing code, a 23.4 ppm fast ADC clock, a 12 ppm fast ESP crystal, 10 µs of interrupt jitter and ±3 ms SNTP steps:
+
+| Case | Result |
+|---|---|
+| GPS PPS | 1.7 µs rms from true time |
+| PPS lost, 30 s holdover | within 1.3 µs |
+| Handover to SNTP after holdover | no jump: 525 ppm worst between neighbouring samples |
+| No PPS, an hour of SNTP steps | SNTP-grade (ms), never a step |
+
+### Edge Timing
+
+`capture` chooses how DRDY and the 1 Hz edge get their time. It takes a reboot.
+
+| `capture` | How | Timing noise |
+|---|---|---|
+| `isr` (default) | A GPIO interrupt reads esp_timer | about 10 µs under WiFi load |
+| `mcpwm` | One MCPWM capture timer latches both edges in hardware at 6.25 ns, kept as µs | 0.3 µs rms (the µs rounding) |
+
+- With `mcpwm`, simulated rate-fit error drops from 0.014 to 0.0003 ppm. Interrupt latency spikes under WiFi load no longer reach the timestamps.
+- **Self-checking:** each latched edge must land just before its interrupt. One that doesn't is counted in `/api/acq` `cap_bad` and timed from the interrupt instead, so a faulty capture path falls back to `isr` accuracy instead of giving wrong times. `drdy_rate` checks the edge count against the nominal rate once a second, on both paths.
+- If the capture timer can't be set up, the station falls back to `isr` and says so in `/api/acq` `capture`.
+- `mcpwm` stays opt-in until it has passed the bench checks below.
+
+### Bench Checks for Timing
+
+1. Boot log: PSRAM found and tested, `Output ring: 131072 samples (3072 KB) in PSRAM`.
+2. ADC: STATUS DRDY bits set on new data, `stale_frames` and `overruns` at 0 in steady state, `drdy_rate` within a few tenths of a percent of `fs_in`.
+3. With GPS PPS and `capture=isr`: `time.quality` reaches `pps` after 10 edges. Note `ref.rate_sigma_ppm`.
+4. With `capture=mcpwm`: the boot log confirms both capture channels, `cap_bad` and `drdy_rate_bad` stay at 0, `overruns` stays flat across a settings save, and `rate_sigma_ppm` drops by more than ten times. Then `mcpwm` can become the default.
 
 ## Firmware Architecture
 
@@ -157,14 +217,15 @@ C only, native IDF APIs, no Arduino, no managed components.
 | Context | Priority | Job |
 |---|---|---|
 | WiFi driver | 23 | IDF |
-| Acquisition | 20 | One SPI frame per DRDY, FIR, ring buffer, statistics |
+| Acquisition | 20 | DRDY accounting, SPI frames, FIR, output ring, statistics |
 | lwIP tcpip | 18 | IDF, SNTP callback |
-| Timebase | 10 | 1 Hz rate loop, DS3231 (owns I2C) |
+| Timebase | 10 | 1 Hz rate fit, PPS timestamp model, sample-clock slew, DS3231 (owns I2C) |
 | httpd | default | API and page |
 | Captive DNS, button, LED | 5, 4, 2 | Housekeeping |
 
 - **One owner per peripheral:** acquisition owns SPI, timebase owns I2C.
-- **ISRs only timestamp and notify.** A DRDY served late is counted as an overrun rather than passing silently.
+- **ISRs only timestamp, count and notify,** from IRAM, and keep running through flash writes. Every DRDY edge is counted, so a sample read late or failing its CRC is held and flagged rather than dropped, and the sample count stays on the true grid.
+- **Lock-free output ring** in PSRAM (131072 samples, 4096 in internal RAM without PSRAM): the acquisition task never waits on an HTTP reader.
 - **Settings changes** restart acquisition in place, with no reboot.
 
 ## Talking to the Station
@@ -190,6 +251,7 @@ The API is the contract; the page is one client of it. Full reference: [`doc/API
 curl http://vseismo/api/status
 curl http://vseismo/api/acq
 curl 'http://vseismo/api/wave?since=0&max=100'
+curl 'http://vseismo/api/wave?since=118000&max=1000&order=oldest'   # catch up, see "pending"
 curl -d osr=4096 -d decim=10 http://vseismo/api/config
 curl -d cmd=mux -d ch=0 -d mode=short http://vseismo/api/acq/cmd
 ```
@@ -220,7 +282,7 @@ vseismo> sync
 | Class | Bits | Behaviour |
 |---|---|---|
 | A | Abnormal reset, I2C init, task init | Latched until reboot, solid red LED, blocks the OTA self-test |
-| Process | ADC missing, RTC missing or lost power, I2C recovered, 1 Hz reference lost, CRC errors, overruns, clipping, no wall-clock time | Web page and log, clear when the cause clears |
+| Process | ADC missing, RTC missing or lost power, I2C recovered, 1 Hz reference lost, CRC errors, overruns, clipping, no wall-clock time, ADC reset or resynced on its own | Web page and log, clear when the cause clears |
 
 A missing ADC is deliberately a process fault, so a bare DevKit can still take firmware updates.
 
@@ -270,8 +332,8 @@ curl --data-binary @vseismo.cfg http://vseismo/api/config/import
 |---|---|
 | `main/vseismo.c` | Boot order, WiFi STA/AP, status LED, BOOT button, OTA self-test |
 | `main/ads131m0x.c` | ADS131M0x driver, CRC check, LTC6903 programming |
-| `main/acq.c` | DRDY ISR, acquisition task, clock paths, FIR, ring, statistics |
-| `main/timebase.c` | SNTP, DS3231 holdover, 1 Hz rate loop |
+| `main/acq.c` | DRDY interrupt and MCPWM capture, acquisition task, clock paths, FIR, output ring, statistics |
+| `main/timebase.c` | SNTP, DS3231 holdover, 1 Hz rate fit, PPS timestamp model, slewed sample clock |
 | `main/web_server.c` | Config, HTTP API, OTA writer, captive portal routes |
 | `main/console.c` | USB console |
 | `main/captive_dns.c`, `event_log.c`, `ds323x.c` | Shared with esp32nixie |
@@ -283,7 +345,8 @@ curl --data-binary @vseismo.cfg http://vseismo/api/config/import
 
 ## Roadmap
 
-- **Bench bring-up:** pins, CLKIN modification, noise floor with shorted inputs, offset trim sign, CRC coverage
+- **Bench bring-up:** pins, CLKIN modification, noise floor with shorted inputs, offset trim sign, CRC coverage, the [timing checks](#bench-checks-for-timing)
+- **Edge capture:** make `capture=mcpwm` the default once it passes the bench
 - **WinSDR:** the PSN-ADC24 packet format on UART0
 - **Filters:** a minimum-phase FIR option for sharper P-wave onsets
 - **Phase match:** between the two amplifier channels, measured with one test tone into both
