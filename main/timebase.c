@@ -6,10 +6,21 @@
  *
  * Rate loop: at each reference edge the ADC position is interpolated
  *   pos = n + (t_edge - t_drdy) * fs_nominal
- * where n and t_drdy are the latest DRDY count and time. Two edges one
- * reference second apart give the true sample count per second. The
- * interpolation error is a fraction of one sample period; smoothed over
- * many seconds it settles to well under 1 ppm with GPS PPS.
+ * where n and t_drdy are the latest DRDY count and time. pos is a phase
+ * measurement against reference second x. The rate is the slope of a
+ * least-squares line through (x, pos) over the last RATE_WIN edges, not
+ * an average of second-to-second differences: with white timing jitter
+ * sigma_pos per point, differencing gives sigma_f ~ alpha * sigma_pos
+ * (1.4 ppm at 10 us jitter, alpha 0.1), the fit gives
+ *   sigma_f = sigma_pos * sqrt(12 / N^3)
+ * which is about 0.01 ppm at N = 300 from the same edges. The same fit of
+ * the edge times themselves gives the ESP crystal error.
+ *
+ * Edges at the wrong spacing (not a whole number of seconds) are ignored.
+ * Edges at the right spacing but far off the fit are outliers; a run of
+ * them means the rate itself moved, and the fit restarts. A restart of
+ * acquisition (epoch change) or a reference gap over RATE_MAX_SKIP seconds
+ * restarts it too.
  *
  * SNTP runs in immediate mode: each hourly sync may step the system clock
  * by a few ms. Timestamps follow the step; the sample stream does not.
@@ -22,6 +33,7 @@
 #include "io_map.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
 #include "esp_log.h"
@@ -34,8 +46,15 @@
 static const char *TAG = "TIME";
 
 #define REF_LOST_MS        3000
-#define RATE_EMA_ALPHA     0.1
 #define RTC_POLL_S         60
+
+#define RATE_WIN           300     /* reference edges in the fit window */
+#define RATE_MIN_PTS       10      /* edges before the rate is reported */
+#define RATE_MAX_SKIP      30      /* missed edges bridged without a restart */
+#define RATE_SPACING_US    20000   /* edge spacing tolerance against whole seconds */
+#define RATE_OUTLIER_SMP   0.5     /* off the fit by this many samples ... */
+#define RATE_OUTLIER_US    200.0   /* ... or this much time, whichever is larger */
+#define RATE_RESET_AFTER   5       /* consecutive outliers: the rate moved, restart */
 
 static TaskHandle_t s_task;
 static volatile int64_t s_edge_t;
@@ -177,13 +196,87 @@ static void rtc_poll(void)
 
 /* ── Rate loop ──────────────────────────────────────────────────────────── */
 
+/* Fit state. Points are stored as residuals against the nominal rate so
+ * the sums stay small: y = pos - pos0 - fs * x (samples), e = t - t0 - 1e6 x
+ * (us). Slopes of y and e against x are then the rate error in samples per
+ * second and the ESP timer error in us per second (= ppm). */
+static struct {
+    double   x[RATE_WIN], y[RATE_WIN], e[RATE_WIN];
+    int      head, n;
+    bool     active;
+    uint32_t epoch;
+    double   fs;            /* nominal rate the residuals are taken against */
+    double   pos0;
+    int64_t  t0;
+    double   x_last;        /* reference second of the last accepted or outlier edge */
+    int64_t  t_last;
+    double   a, b;          /* y = a + b x from the last solve */
+    bool     have_line;
+    int      bad_run;
+} s_fit;
+
+static void fit_add(double x, double y, double e)
+{
+    s_fit.x[s_fit.head] = x;
+    s_fit.y[s_fit.head] = y;
+    s_fit.e[s_fit.head] = e;
+    s_fit.head = (s_fit.head + 1) % RATE_WIN;
+    if (s_fit.n < RATE_WIN) s_fit.n++;
+}
+
+static void fit_start(double pos, int64_t t, double fs, uint32_t epoch)
+{
+    memset(&s_fit, 0, sizeof(s_fit));
+    s_fit.active = true;
+    s_fit.epoch = epoch;
+    s_fit.fs = fs;
+    s_fit.pos0 = pos;
+    s_fit.t0 = t;
+    s_fit.t_last = t;
+    fit_add(0.0, 0.0, 0.0);
+}
+
+/* Least-squares slopes of y and e against x over the window. Two passes
+ * (means, then centred sums): cheap at 1 Hz and free of cancellation. */
+static bool fit_solve(double *b_y, double *b_e, double *sigma_b)
+{
+    int n = s_fit.n;
+    if (n < 3) return false;
+    double mx = 0, my = 0, me = 0;
+    for (int i = 0; i < n; i++) { mx += s_fit.x[i]; my += s_fit.y[i]; me += s_fit.e[i]; }
+    mx /= n; my /= n; me /= n;
+    double sxx = 0, sxy = 0, sxe = 0;
+    for (int i = 0; i < n; i++) {
+        double dx = s_fit.x[i] - mx;
+        sxx += dx * dx;
+        sxy += dx * (s_fit.y[i] - my);
+        sxe += dx * (s_fit.e[i] - me);
+    }
+    if (sxx <= 0) return false;
+    double b = sxy / sxx, a = my - b * mx, ss = 0;
+    for (int i = 0; i < n; i++) {
+        double r = s_fit.y[i] - a - b * s_fit.x[i];
+        ss += r * r;
+    }
+    s_fit.a = a;
+    s_fit.b = b;
+    s_fit.have_line = true;
+    *b_y = b;
+    *b_e = sxe / sxx;
+    *sigma_b = sqrt(ss / (n - 2) / sxx);
+    return true;
+}
+
+static void rate_invalidate(void)
+{
+    portENTER_CRITICAL(&s_mux);
+    s_st.rate_valid = false;
+    s_st.rate_points = s_fit.n;
+    portEXIT_CRITICAL(&s_mux);
+}
+
 static void on_edge(int64_t t_edge)
 {
-    static int64_t prev_t;
-    static double prev_pos;
-    static uint32_t prev_epoch;
-    static bool have_prev;
-
     uint64_t n;
     int64_t t_d;
     uint32_t epoch;
@@ -196,38 +289,64 @@ static void on_edge(int64_t t_edge)
     portEXIT_CRITICAL(&s_mux);
     fault_clear(FAULT_REF_LOST);
 
-    if (fs <= 0 || t_d == 0) { have_prev = false; return; }
+    if (fs <= 0 || t_d == 0) { s_fit.active = false; s_fit.n = 0; rate_invalidate(); return; }
     double pos = (double)n + (double)(t_edge - t_d) * fs / 1e6;
 
-    if (have_prev && epoch == prev_epoch) {
-        int64_t dt = t_edge - prev_t;
-        int64_t k = (dt + 500000) / 1000000;           /* reference seconds elapsed */
-        if (k >= 1 && k <= 5 && llabs(dt - k * 1000000) < 20000) {
-            double rate = (pos - prev_pos) / (double)k;
-            double esp_ppm = ((double)dt / (double)k - 1e6);   /* us per s = ppm */
-            portENTER_CRITICAL(&s_mux);
-            if (!s_st.rate_valid) {
-                s_st.fs_measured = rate;
-                s_st.esp_ppm = esp_ppm;
-                s_st.rate_valid = true;
-            } else {
-                s_st.fs_measured += RATE_EMA_ALPHA * (rate - s_st.fs_measured);
-                s_st.esp_ppm += RATE_EMA_ALPHA * (esp_ppm - s_st.esp_ppm);
-            }
-            s_st.adc_ppm = (s_st.fs_measured / fs - 1.0) * 1e6;
-            portEXIT_CRITICAL(&s_mux);
-        } else if (k >= 1) {
-            ESP_LOGW(TAG, "Reference edge spacing %lld us: ignored", (long long)dt);
-        }
-    } else {
-        portENTER_CRITICAL(&s_mux);
-        s_st.rate_valid = false;
-        portEXIT_CRITICAL(&s_mux);
+    if (!s_fit.active || epoch != s_fit.epoch || fs != s_fit.fs) {
+        fit_start(pos, t_edge, fs, epoch);
+        rate_invalidate();
+        return;
     }
-    prev_t = t_edge;
-    prev_pos = pos;
-    prev_epoch = epoch;
-    have_prev = true;
+
+    int64_t dt = t_edge - s_fit.t_last;
+    int64_t k = (dt + 500000) / 1000000;               /* reference seconds since the last edge */
+    if (k < 1 || llabs(dt - k * 1000000) >= RATE_SPACING_US) {
+        ESP_LOGW(TAG, "Reference edge spacing %lld us: ignored", (long long)dt);
+        return;                                        /* a glitch: keep the last good edge */
+    }
+    if (k > RATE_MAX_SKIP) {
+        ESP_LOGW(TAG, "Reference gap of %lld s: rate fit restarted", (long long)k);
+        fit_start(pos, t_edge, fs, epoch);
+        rate_invalidate();
+        return;
+    }
+
+    double x = s_fit.x_last + (double)k;
+    double y = pos - s_fit.pos0 - fs * x;
+    double e = (double)(t_edge - s_fit.t0) - 1e6 * x;
+    s_fit.x_last = x;
+    s_fit.t_last = t_edge;
+
+    if (s_fit.have_line && s_fit.n >= RATE_MIN_PTS) {
+        double r = y - (s_fit.a + s_fit.b * x);
+        double lim = fmax(RATE_OUTLIER_SMP, RATE_OUTLIER_US * 1e-6 * fs);
+        if (fabs(r) > lim) {
+            portENTER_CRITICAL(&s_mux);
+            s_st.rate_rejects++;
+            portEXIT_CRITICAL(&s_mux);
+            if (++s_fit.bad_run >= RATE_RESET_AFTER) {
+                ESP_LOGW(TAG, "%d edges in a row off the rate fit: restarted", RATE_RESET_AFTER);
+                fit_start(pos, t_edge, fs, epoch);
+                rate_invalidate();
+            } else {
+                ESP_LOGW(TAG, "Reference edge %.3f samples off the rate fit: ignored", r);
+            }
+            return;
+        }
+    }
+    s_fit.bad_run = 0;
+    fit_add(x, y, e);
+
+    double by, be, sb;
+    if (!fit_solve(&by, &be, &sb) || s_fit.n < RATE_MIN_PTS) { rate_invalidate(); return; }
+    portENTER_CRITICAL(&s_mux);
+    s_st.rate_valid = true;
+    s_st.fs_measured = fs + by;
+    s_st.adc_ppm = by / fs * 1e6;
+    s_st.esp_ppm = be;
+    s_st.rate_sigma_ppm = sb / fs * 1e6;
+    s_st.rate_points = s_fit.n;
+    portEXIT_CRITICAL(&s_mux);
 }
 
 static void timebase_task(void *arg)

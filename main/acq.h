@@ -26,7 +26,8 @@
 #include "esp_err.h"
 
 #define ACQ_NCH         2
-#define ACQ_RING_LEN    4096      /* output samples kept for the web API */
+#define ACQ_RING_LEN        4096      /* output samples kept, internal RAM fallback */
+#define ACQ_RING_LEN_PSRAM  131072    /* with PSRAM: 22 min at 100 SPS, 3 MB */
 
 /* Limits the FIR and the task can honour. A Blackman FIR needs about
  * 14 x decim taps to keep aliases out of 0..0.4 x f_out; 255 taps cover
@@ -109,9 +110,16 @@ void acq_get_status(acq_status_t *out);
 
 /**
  * @brief Copy samples newer than since_seq, oldest first.
+ *
+ * Lock-free: the acquisition task is the only writer and never waits on a
+ * reader. Any number of readers; a sample the writer overwrote during the
+ * copy is dropped from the front of the result, never returned torn.
  * @return number copied. *next_seq is the seq to ask for next time.
  */
 int acq_read_since(uint32_t since_seq, acq_sample_t *out, int max, uint32_t *next_seq);
+
+/** @brief Output samples the ring holds (ACQ_RING_LEN_PSRAM or ACQ_RING_LEN). */
+uint32_t acq_ring_len(void);
 
 /**
  * @brief Input-sample position of the latest DRDY, for the 1 Hz rate loop.

@@ -40,11 +40,11 @@
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "esp_clk_tree.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_task_wdt.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 static const char *TAG = "ACQ";
@@ -67,7 +67,6 @@ static uint32_t s_seen;                             /* DRDY count already accoun
 static volatile bool     s_paused;
 
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;   /* status, position */
-static SemaphoreHandle_t s_ring_lock;
 
 static acq_settings_t s_set;            /* owned by the task once started */
 static acq_settings_t s_pending;
@@ -96,8 +95,15 @@ static int64_t  s_period_us;
 static int64_t  s_gd_us;
 static int64_t  s_last_evt, s_last_try;
 
-static acq_sample_t s_ring[ACQ_RING_LEN];
+/* Output ring. Single writer (this task), lock-free readers. The writer
+ * fills slot seq & mask, then publishes seq + 1 with release order; a
+ * reader loads the head with acquire order, copies, loads it again and
+ * drops whatever the writer may have reached in between. One slot is kept
+ * as slack for the write in progress. */
+static acq_sample_t *s_ring;
+static uint32_t s_ring_len;             /* power of two */
 static uint32_t s_seq;                  /* next output seq; monotonic across restarts */
+static uint32_t s_ring_fill;            /* slots written, saturates at s_ring_len */
 
 static bool s_ledc_on;
 
@@ -311,28 +317,51 @@ static void stats_push(const int32_t *v)
 
 static void ring_push(int64_t t_esp, const int32_t *v, uint8_t flags)
 {
-    acq_sample_t smp = { .seq = s_seq, .flags = flags, .utc_us = timebase_esp_to_utc_us(t_esp) };
-    memcpy(smp.v, v, sizeof(smp.v));
-    xSemaphoreTake(s_ring_lock, portMAX_DELAY);
-    s_ring[s_seq % ACQ_RING_LEN] = smp;
-    s_seq++;
-    xSemaphoreGive(s_ring_lock);
+    uint32_t seq = s_seq;                              /* only this task writes it */
+    acq_sample_t *slot = &s_ring[seq & (s_ring_len - 1)];
+    slot->seq = seq;
+    slot->flags = flags;
+    slot->utc_us = timebase_esp_to_utc_us(t_esp);
+    memcpy(slot->v, v, sizeof(slot->v));
+    if (s_ring_fill < s_ring_len) __atomic_store_n(&s_ring_fill, s_ring_fill + 1, __ATOMIC_RELEASE);
+    __atomic_store_n(&s_seq, seq + 1, __ATOMIC_RELEASE);
+}
+
+/* Oldest seq a reader may trust when the head is at head. */
+static inline uint32_t ring_oldest(uint32_t head)
+{
+    uint32_t fill = __atomic_load_n(&s_ring_fill, __ATOMIC_ACQUIRE);
+    uint32_t keep = fill < s_ring_len ? fill : s_ring_len - 1;    /* one slot of slack */
+    return head - keep;                                            /* wraps correctly */
 }
 
 int acq_read_since(uint32_t since, acq_sample_t *out, int max, uint32_t *next_seq)
 {
-    if (!s_ring_lock || max <= 0) { if (next_seq) *next_seq = since; return 0; }
-    xSemaphoreTake(s_ring_lock, portMAX_DELAY);
-    uint32_t head = s_seq;
-    uint32_t oldest = head > ACQ_RING_LEN ? head - ACQ_RING_LEN : 0;
+    if (!s_ring || max <= 0) { if (next_seq) *next_seq = since; return 0; }
+    const uint32_t mask = s_ring_len - 1;
+    uint32_t head = __atomic_load_n(&s_seq, __ATOMIC_ACQUIRE);
+    uint32_t oldest = ring_oldest(head);
     if ((int32_t)(since - oldest) < 0 || (int32_t)(since - head) > 0) since = oldest;
-    uint32_t avail = head - since;
-    if (avail > (uint32_t)max) since = head - (uint32_t)max;   /* newest max, not oldest */
+    if (head - since > (uint32_t)max) since = head - (uint32_t)max;   /* newest max, not oldest */
     int n = 0;
-    for (uint32_t s = since; s != head; s++) out[n++] = s_ring[s % ACQ_RING_LEN];
-    xSemaphoreGive(s_ring_lock);
+    for (uint32_t s = since; s != head; s++) out[n++] = s_ring[s & mask];
+
+    /* Anything the writer reached during the copy is gone: drop it from the front. */
+    uint32_t valid = ring_oldest(__atomic_load_n(&s_seq, __ATOMIC_ACQUIRE));
+    int drop = 0;
+    while (drop < n && ((int32_t)(since + (uint32_t)drop - valid) < 0 ||
+                        out[drop].seq != since + (uint32_t)drop)) drop++;
+    if (drop) {
+        memmove(out, out + drop, sizeof(*out) * (size_t)(n - drop));
+        n -= drop;
+    }
     if (next_seq) *next_seq = head;
     return n;
+}
+
+uint32_t acq_ring_len(void)
+{
+    return s_ring_len;
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -639,8 +668,17 @@ static void acq_task(void *arg)
 
 esp_err_t acq_start(const acq_settings_t *s)
 {
-    s_ring_lock = xSemaphoreCreateMutex();
-    if (!s_ring_lock) return ESP_ERR_NO_MEM;
+    /* PSRAM when the build has it, else the old internal-RAM size. */
+    s_ring_len = ACQ_RING_LEN_PSRAM;
+    s_ring = heap_caps_calloc(s_ring_len, sizeof(acq_sample_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!s_ring) {
+        s_ring_len = ACQ_RING_LEN;
+        s_ring = heap_caps_calloc(s_ring_len, sizeof(acq_sample_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    }
+    if (!s_ring) return ESP_ERR_NO_MEM;
+    ESP_LOGI(TAG, "Output ring: %lu samples (%lu KB) in %s", (unsigned long)s_ring_len,
+             (unsigned long)(s_ring_len * sizeof(acq_sample_t) / 1024),
+             s_ring_len == ACQ_RING_LEN_PSRAM ? "PSRAM" : "internal RAM");
     s_set = *s;
     esp_err_t err = ads_bus_init();
     if (err != ESP_OK) {

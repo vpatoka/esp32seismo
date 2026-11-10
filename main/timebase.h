@@ -46,9 +46,12 @@ typedef struct {
     uint32_t ref_edges;
     int64_t  ref_age_ms;      /* -1 = never */
     bool     rate_valid;
-    double   fs_measured;     /* ADC samples per reference second (smoothed) */
+    double   fs_measured;     /* ADC samples per reference second, least-squares fit */
     double   adc_ppm;         /* measured vs nominal input rate */
     double   esp_ppm;         /* ESP timer vs reference */
+    double   rate_sigma_ppm;  /* 1-sigma uncertainty of adc_ppm from the fit residuals */
+    uint32_t rate_points;     /* reference edges in the fit window */
+    uint32_t rate_rejects;    /* edges dropped as outliers since boot */
 
     bool     rtc_enabled;
     bool     rtc_online;
