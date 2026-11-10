@@ -227,6 +227,11 @@ PCB: JLCPCB or PCBWay, 2 layers, 130 × 90 mm, 1.6 mm, 1 oz, HASL.
 - **Pseudo-differential per channel.** AINx− is that channel's own amplifier ground, not the carrier ground. A small voltage between amplifier ground and carrier ground then cancels in the ADC instead of landing in the record.
 - **No clamp diodes.** A clamp to GND would conduct at about −0.6 V and clip the negative half of the signal. The divider keeps a rail-to-rail amplifier inside the ADC range. If the Click is unpowered, the 9.1k limits the current into its ESD diodes to about 1 mA.
 - **RC.** 47 nF on the 1.0k (about 0.9k Thevenin) puts a pole near 3.7 kHz. That's plenty of anti-aliasing for a ΔΣ modulator running at MHz rates, and it also feeds the ADC's input sampling charge. C0G only, since X7R distorts.
+- **Gain error at PGA 1 (about 0.3 %).** The ADS131M02 turns on its input pre-charge buffer only above gain 4. At gain 1 the inputs are unbuffered switched-capacitor inputs. That has two effects:
+  - The ADC's differential input impedance (on the order of 330 kΩ at gain 1 in high-resolution mode; check the datasheet table) loads the divider's 9.1k ∥ 1.0k ≈ 0.9k source. That reads about 0.3 % low.
+  - The error is nearly the same on both channels, because the dividers match. Measure it once with the "Positive test level" and a known amplifier signal, and trim it with `chN_gcal`.
+
+  The 47 nF also serves as the charge reservoir for each input sample. Keep C10 and C11 at the point where the pigtails leave the board, and keep P4 and P5 short.
 - **Ground link.** R30 is the only path between `AMP_GND` and `GND`. 10 Ω breaks small loops but keeps the ADC reference. Fit 0 Ω if there's no hum. Route each channel's ground return as its own trace, P2-2 to P4-2 and P3-2 to P5-1, not through the pour.
 - **+3V3A.** FB1, C4, U2 (LP2950, 100 mA, needs at least 1 µF on its output), C5 and C6.
   - Load is under 30 mA: the ADC, the LTC6903, the Click LED and Y1.
