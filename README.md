@@ -127,10 +127,13 @@ The stock Click wires its screw terminals straight to the ADC pins and clocks th
 
 ### Power
 
-- 16 to 24 V DC, with a fuse, a TVS and a reverse diode, feeds the EQAMP directly.
-- A buck converter makes 5 V for the DevKit, and a separate LDO makes 3.3 V for the Click.
-- Grounds meet at one point near the Click.
-- Keep the ESP32 off the amplifier's 12 V rail: WiFi transmit bursts would land in a gain-1700 analog chain.
+The [carrier board](hardware/carrier/README.md) holds the DevKit, the ADC 15 Click and a ZS-042 DS3231 on headers, plus the power, the analog front end and the ADC clock.
+
+- The EQAMP keeps its own 16 to 24 V supply. The carrier runs from its own 12 V adapter, through a fuse, a reverse diode and a TVS.
+- A Murata switching module makes 5 V for the DevKit. A separate ferrite and LDO make a quiet 3.3 V just for the Click.
+- Each EQAMP channel arrives as a signal and ground pair, and stays a pair down to its ADC input (pseudo-differential).
+- Amplifier ground meets carrier ground at one resistor, R30.
+- Keep the ESP32 off the amplifier's rails: WiFi transmit bursts would land in a gain-1700 analog chain.
 
 ## Timing
 
@@ -277,6 +280,7 @@ curl --data-binary @vseismo.cfg http://vseismo/api/config/import
 | `main/www/` | Tuning page and portal page |
 | `doc/API.md` | HTTP API contract |
 | `partitions.csv` | Dual-slot OTA layout |
+| `hardware/carrier/` | Carrier board rev A: generator, schematic and placement drawings, KiCad netlist |
 
 ## Roadmap
 
