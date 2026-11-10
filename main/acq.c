@@ -4,16 +4,29 @@
  * @file acq.c
  * @brief Acquisition task. See acq.h.
  *
- * Timing budget at 1000 SPS: one SPI frame (about 15 us at 8 MHz) plus two
- * FIR dot products every tenth sample (2 x 201 int64 MACs). The task runs
- * at priority 20, above lwIP, below the WiFi driver; a 1 ms deadline per
- * frame leaves a wide margin. A DRDY served late shows up as an overrun
- * (the notification count was above one) instead of passing silently.
+ * Timing budget at 1000 SPS: up to two SPI frames per DRDY (about 15 us
+ * each at 8 MHz) plus two FIR dot products every tenth sample (2 x 201
+ * int64 MACs). The task runs at priority 20, above lwIP, below the WiFi
+ * driver; a 1 ms deadline per frame leaves a wide margin.
+ *
+ * DRDY accounting: the ISR counts edges and stores the esp_timer time of
+ * each one in a small ring indexed by that count. The task works from the
+ * count, not from the notification value, so a settings wakeup is never
+ * mistaken for a sample and a late wakeup still knows how many conversions
+ * happened. On each wakeup it reads frames until STATUS shows no new data
+ * (at most the two the ADC FIFO holds). Valid frames are the newest
+ * conversions; any shortfall is lost samples, replaced by the last good
+ * value so the FIR history and the sample counter stay on the true grid.
+ *
+ * STATUS is checked on every good frame: a RESET flag or a wrong word
+ * length means the converter restarted on its own (brownout) and is back at
+ * its defaults, so the task reconfigures it. An unexpected F_RESYNC moves
+ * the sample grid, so the rate loop epoch is bumped.
  *
  * FIR: windowed sinc (Blackman), linear phase, unity DC gain, cutoff at
  * 0.4 x the output rate (40 Hz at 100 SPS). Coefficients in Q30, samples
- * 24-bit, accumulated in int64: no float on the sample path (the C5 core
- * has no FPU). Minimum-phase is a phase-2 item.
+ * 24-bit, accumulated in int64: no float on the sample path. Output is
+ * held back after a restart until the history holds only settled data.
  */
 
 #include "acq.h"
@@ -38,10 +51,19 @@ static const char *TAG = "ACQ";
 
 #define FIR_MAX           255
 #define CLIP_COUNTS       (ADS_FS_COUNTS - 16)
-#define RETRY_TICKS       50          /* 100 ms loop ticks: 5 s between ADC probes */
+#define RETRY_US          5000000     /* 5 s between ADC probes */
+#define NO_DRDY_US        100000      /* DRDY silent this long: clock or power gone */
+#define DRDY_TS_LEN       16          /* DRDY timestamp ring, power of two */
+#define SYNC_GUARD_FRAMES 8           /* F_RESYNC expected this soon after our own SYNC */
+#define BITS_PROBE_FRAMES 64
+
+/* Index into s_taint[] = bit position of the ACQ_F_* flag */
+#define TAINT_N           4
 
 static TaskHandle_t s_task;
-static volatile int64_t  s_drdy_t;
+static volatile uint32_t s_drdy_cnt;                /* written by the ISR only */
+static volatile int64_t  s_drdy_ts[DRDY_TS_LEN];
+static uint32_t s_seen;                             /* DRDY count already accounted for */
 static volatile bool     s_paused;
 
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;   /* status, position */
@@ -63,6 +85,17 @@ static int32_t  s_coef[FIR_MAX];
 static int32_t  s_hist[ACQ_NCH][FIR_MAX];
 static int      s_taps = 1, s_hpos, s_dcount;
 
+static int32_t  s_hold[ACQ_NCH];        /* last good input sample */
+static uint32_t s_skip_in;              /* inputs still to hold for sinc3 settling */
+static uint32_t s_mute_out;             /* inputs before the FIR history is all settled data */
+static uint32_t s_taint[TAINT_N];       /* inputs left in the FIR window per flag */
+static uint32_t s_sync_guard;
+static bool     s_bits_seen;            /* STATUS DRDY bits observed since the restart */
+static uint32_t s_bits_probe;
+static int64_t  s_period_us;
+static int64_t  s_gd_us;
+static int64_t  s_last_evt, s_last_try;
+
 static acq_sample_t s_ring[ACQ_RING_LEN];
 static uint32_t s_seq;                  /* next output seq; monotonic across restarts */
 
@@ -75,7 +108,9 @@ static bool s_ledc_on;
 static void IRAM_ATTR drdy_isr(void *arg)
 {
     (void)arg;
-    s_drdy_t = esp_timer_get_time();
+    uint32_t k = s_drdy_cnt;
+    s_drdy_ts[k & (DRDY_TS_LEN - 1)] = esp_timer_get_time();
+    s_drdy_cnt = k + 1;
     BaseType_t woken = pdFALSE;
     if (s_task) vTaskNotifyGiveFromISR(s_task, &woken);
     portYIELD_FROM_ISR(woken);
@@ -93,6 +128,16 @@ static void drdy_init(void)
     gpio_config(&io);
     gpio_isr_handler_add(ADC_DRDY_GPIO, drdy_isr, NULL);
     gpio_intr_disable(ADC_DRDY_GPIO);
+}
+
+/* Time of DRDY number idx. cnt is a count read after idx happened. Entries
+ * the ISR has overwritten are extrapolated back from the newest one. */
+static int64_t drdy_time(uint32_t idx, uint32_t cnt)
+{
+    int64_t t = s_drdy_ts[idx & (DRDY_TS_LEN - 1)];
+    if ((uint32_t)(s_drdy_cnt - idx) <= DRDY_TS_LEN) return t;
+    int64_t newest = s_drdy_ts[(cnt - 1) & (DRDY_TS_LEN - 1)];
+    return newest - (int64_t)(cnt - 1 - idx) * s_period_us;
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -176,6 +221,10 @@ static void fir_design(int taps, int decim)
     if (!(taps & 1)) taps--;
     if (taps < 3) taps = 3;
     s_taps = taps;
+    if (taps < 14 * decim) {
+        ESP_LOGW(TAG, "%d taps is short for decimation by %d (want %d or more): expect aliasing",
+                 taps, decim, 14 * decim);
+    }
 
     static double h[FIR_MAX];
     const double fc = 0.4 / decim;        /* cycles per input sample */
@@ -211,7 +260,7 @@ static struct {
     int32_t mn[ACQ_NCH], mx[ACQ_NCH];
     uint32_t clips[ACQ_NCH];
     uint32_t n, win;
-    uint32_t crc0, ovr0;
+    uint32_t crc0, ovr0, stat0;
 } s_acc;
 
 static void stats_reset(uint32_t win)
@@ -221,6 +270,7 @@ static void stats_reset(uint32_t win)
     for (int c = 0; c < ACQ_NCH; c++) { s_acc.mn[c] = INT32_MAX; s_acc.mx[c] = INT32_MIN; }
     s_acc.crc0 = s_st.crc_errors;
     s_acc.ovr0 = s_st.overruns;
+    s_acc.stat0 = s_st.status_events;
 }
 
 static void stats_push(const int32_t *v)
@@ -247,6 +297,7 @@ static void stats_push(const int32_t *v)
     }
     bool crc = s_st.crc_errors != s_acc.crc0;
     bool ovr = s_st.overruns != s_acc.ovr0;
+    bool sta = s_st.status_events != s_acc.stat0;
     portENTER_CRITICAL(&s_mux);
     memcpy(s_st.ch, out, sizeof(out));
     portEXIT_CRITICAL(&s_mux);
@@ -254,12 +305,13 @@ static void stats_push(const int32_t *v)
     if (clip) fault_raise(FAULT_ADC_CLIP); else fault_clear(FAULT_ADC_CLIP);
     if (crc)  fault_raise(FAULT_ADC_CRC);  else fault_clear(FAULT_ADC_CRC);
     if (ovr)  fault_raise(FAULT_ADC_OVERRUN); else fault_clear(FAULT_ADC_OVERRUN);
+    if (sta)  fault_raise(FAULT_ADC_STATUS);  else fault_clear(FAULT_ADC_STATUS);
     stats_reset(s_acc.win);
 }
 
-static void ring_push(int64_t t_esp, const int32_t *v)
+static void ring_push(int64_t t_esp, const int32_t *v, uint8_t flags)
 {
-    acq_sample_t smp = { .seq = s_seq, .utc_us = timebase_esp_to_utc_us(t_esp) };
+    acq_sample_t smp = { .seq = s_seq, .flags = flags, .utc_us = timebase_esp_to_utc_us(t_esp) };
     memcpy(smp.v, v, sizeof(smp.v));
     xSemaphoreTake(s_ring_lock, portMAX_DELAY);
     s_ring[s_seq % ACQ_RING_LEN] = smp;
@@ -284,8 +336,181 @@ int acq_read_since(uint32_t since, acq_sample_t *out, int max, uint32_t *next_se
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
+ * Input path
+ * ═════════════════════════════════════════════════════════════════════════ */
+
+static void bump_epoch(void)
+{
+    portENTER_CRITICAL(&s_mux);
+    s_epoch++;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+/* One input period. raw is NULL for a lost sample; ev carries ACQ_F_GAP or
+ * ACQ_F_CRC when the value must not be trusted. Held inputs repeat the last
+ * good sample: the FIR keeps its grid and the output carries the flag. */
+static void push_input(const int32_t *raw, int64_t t, uint8_t ev)
+{
+    bool real = raw && !(ev & (ACQ_F_GAP | ACQ_F_CRC));
+    if (real && s_skip_in) {
+        s_skip_in--;
+        ev |= ACQ_F_UNSETTLED;
+        real = false;
+    }
+    for (int c = 0; c < ACQ_NCH; c++) {
+        if (real) {
+            if (raw[c] >= CLIP_COUNTS || raw[c] <= -CLIP_COUNTS) {
+                s_acc.clips[c]++;
+                ev |= ACQ_F_CLIP;
+            }
+            s_hold[c] = raw[c];
+        }
+        s_hist[c][s_hpos] = s_hold[c];
+    }
+    s_hpos = s_hpos + 1 == s_taps ? 0 : s_hpos + 1;
+
+    uint8_t flags = 0;
+    for (int b = 0; b < TAINT_N; b++) {
+        if (ev & (1u << b)) s_taint[b] = (uint32_t)s_taps;
+        if (s_taint[b]) { flags |= (uint8_t)(1u << b); s_taint[b]--; }
+    }
+
+    portENTER_CRITICAL(&s_mux);
+    s_n_in++;
+    s_last_t = t;
+    s_st.n_in = s_n_in;
+    portEXIT_CRITICAL(&s_mux);
+
+    int decim = s_set.decim ? s_set.decim : 1;
+    bool muted = s_mute_out > 0;
+    if (muted) s_mute_out--;
+    if (++s_dcount < decim) return;
+    s_dcount = 0;
+    if (muted) return;
+
+    int32_t y[ACQ_NCH];
+    for (int c = 0; c < ACQ_NCH; c++) y[c] = fir_out(c);
+    ring_push(t - s_gd_us, y, flags);
+    s_st.seq = s_seq;
+    stats_push(y);
+}
+
+/* A gap too long to bridge with held samples: count it, restart the rate
+ * epoch and refill the FIR before the next output. */
+static void big_gap(uint32_t lost)
+{
+    portENTER_CRITICAL(&s_mux);
+    s_n_in += lost;
+    s_st.n_in = s_n_in;
+    s_last_t = 0;                       /* the rate loop skips until the next real DRDY */
+    s_epoch++;
+    portEXIT_CRITICAL(&s_mux);
+    s_mute_out = (uint32_t)s_taps + ADS_SINC3_SETTLE;
+    s_taint[0] = s_mute_out + (uint32_t)(s_set.decim ? s_set.decim : 1);   /* ACQ_F_GAP on the first output */
+    ESP_LOGW(TAG, "%lu input samples lost: FIR restarted", (unsigned long)lost);
+}
+
+/* Read what the ADC has for us. Returns false when it needs a reconfigure. */
+static bool service_drdy(void)
+{
+    int32_t raw[ADS_FIFO_DEPTH][ADS_MAX_CH];
+    uint8_t ev[ADS_FIFO_DEPTH];
+    uint32_t valid = 0;
+    const uint16_t dmask = ADS_ST_DRDY_MASK(ads_info()->nch);
+
+    /* Until STATUS has shown its DRDY bits we cannot tell a stale frame from
+     * a new one, so read only as many frames as there were edges. After
+     * that, read until the FIFO is empty: a backlog left behind once would
+     * otherwise pair every later sample with the next DRDY's timestamp. */
+    uint32_t want = s_drdy_cnt - s_seen;
+    uint32_t reads = s_bits_seen ? ADS_FIFO_DEPTH : (want < ADS_FIFO_DEPTH ? want : ADS_FIFO_DEPTH);
+
+    for (uint32_t j = 0; j < reads; j++) {
+        memset(raw[valid], 0, sizeof(raw[valid]));
+        esp_err_t err = ads_read_frame(raw[valid]);
+        if (s_sync_guard) s_sync_guard--;
+        if (err == ESP_ERR_INVALID_CRC) {
+            s_st.crc_errors++;
+            ev[valid++] = ACQ_F_CRC;           /* a conversion was consumed; its value is not trusted */
+            continue;
+        }
+        if (err != ESP_OK) break;
+
+        uint16_t st = ads_info()->status;
+        if ((st & ADS_ST_RESET) || (st & ADS_ST_WLENGTH_MASK) != ADS_ST_WLENGTH_24) {
+            ESP_LOGE(TAG, "ADC STATUS 0x%04X: the converter restarted on its own, reconfiguring", st);
+            s_st.status_events++;
+            fault_raise(FAULT_ADC_STATUS);
+            s_seen = s_drdy_cnt;
+            return false;
+        }
+        if ((st & ADS_ST_F_RESYNC) && !s_sync_guard) {
+            ESP_LOGW(TAG, "ADC STATUS 0x%04X: resync without a SYNC from us, sample grid moved", st);
+            s_st.status_events++;
+            fault_raise(FAULT_ADC_STATUS);
+            bump_epoch();
+            s_skip_in = ADS_SINC3_SETTLE;
+            s_sync_guard = (uint32_t)s_st.fs_in;   /* at most one report per second */
+        }
+        if (st & dmask) {
+            s_bits_seen = true;
+        } else if (s_bits_seen) {
+            break;                             /* FIFO empty: the normal end of a pass */
+        } else if (++s_bits_probe == BITS_PROBE_FRAMES) {
+            ESP_LOGW(TAG, "STATUS DRDY bits never set in %d frames: stale-frame check off", BITS_PROBE_FRAMES);
+        }
+        portENTER_CRITICAL(&s_mux);
+        s_st.adc_status = st;
+        portEXIT_CRITICAL(&s_mux);
+        ev[valid++] = 0;
+    }
+
+    /* Count again after the reads: an edge during them belongs to this pass. */
+    uint32_t cnt = s_drdy_cnt;
+    uint32_t avail = cnt - s_seen;
+    s_seen = cnt;
+
+    uint32_t first = 0;
+    if (valid > avail) {                       /* backlog from before the last resume */
+        first = valid - avail;
+        s_st.stale_frames += first;
+        valid = avail;
+    }
+    uint32_t lost = avail - valid;
+    if (lost) {
+        s_st.overruns += lost;
+        if (lost > 2u * (uint32_t)s_taps + 16u) {
+            big_gap(lost);
+        } else {
+            for (uint32_t i = 0; i < lost; i++) {
+                uint32_t idx = cnt - avail + i;
+                push_input(NULL, drdy_time(idx, cnt), ACQ_F_GAP);
+            }
+        }
+    }
+    for (uint32_t j = 0; j < valid; j++) {
+        uint32_t idx = cnt - valid + j;
+        push_input(raw[first + j], drdy_time(idx, cnt), ev[first + j]);
+    }
+    return true;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
  * Task
  * ═════════════════════════════════════════════════════════════════════════ */
+
+/* Empty the ADC FIFO, then start counting DRDY edges from here. */
+static void resume_stream(void)
+{
+    for (int i = 0; i < ADS_FIFO_DEPTH; i++) {
+        int32_t junk[ADS_MAX_CH];
+        ads_read_frame(junk);
+    }
+    ulTaskNotifyTake(pdTRUE, 0);
+    s_seen = s_drdy_cnt;
+    s_last_evt = esp_timer_get_time();
+    gpio_intr_enable(ADC_DRDY_GPIO);
+}
 
 static bool reconfigure(void)
 {
@@ -303,6 +528,19 @@ static bool reconfigure(void)
     int decim = s_set.decim ? s_set.decim : 1;
     fir_design(s_set.taps, decim);
     double fs_in = (double)clk / 2.0 / s_set.osr;
+    double gd = ((s_taps - 1) / 2.0 + ADS_SINC3_DELAY_PERIODS) / fs_in;
+
+    memset(s_hold, 0, sizeof(s_hold));
+    memset(s_taint, 0, sizeof(s_taint));
+    s_skip_in = 0;
+    s_mute_out = (uint32_t)s_taps + ADS_SINC3_SETTLE;
+    s_bits_seen = false;
+    s_bits_probe = 0;
+    s_sync_guard = SYNC_GUARD_FRAMES;
+    s_period_us = (int64_t)llround(1e6 / fs_in);
+    s_gd_us = (int64_t)llround(gd * 1e6);
+    s_last_try = esp_timer_get_time();
+    s_last_evt = s_last_try;
 
     portENTER_CRITICAL(&s_mux);
     s_st.running = ok;
@@ -311,7 +549,7 @@ static bool reconfigure(void)
     s_st.clk_hz_actual = clk;
     s_st.fs_in = fs_in;
     s_st.fs_out = fs_in / decim;
-    s_st.group_delay_s = (s_taps - 1) / 2.0 / fs_in;
+    s_st.group_delay_s = gd;
     s_st.n_in = 0;
     s_st.restarts++;
     s_n_in = 0;
@@ -321,11 +559,10 @@ static bool reconfigure(void)
     stats_reset((uint32_t)lround(fs_in / decim));
 
     if (ok) {
-        ESP_LOGI(TAG, "Running: %.4f SPS in, decimate by %d (%d taps), %.4f SPS out, delay %.1f ms",
-                 fs_in, decim, s_taps, fs_in / decim, s_st.group_delay_s * 1000.0);
+        ESP_LOGI(TAG, "Running: %.4f SPS in, decimate by %d (%d taps), %.4f SPS out, delay %.2f ms",
+                 fs_in, decim, s_taps, fs_in / decim, gd * 1000.0);
         ads_sync_pulse();
-        ulTaskNotifyTake(pdTRUE, 0);
-        gpio_intr_enable(ADC_DRDY_GPIO);
+        resume_stream();
     }
     return ok;
 }
@@ -335,16 +572,17 @@ static void handle_requests(void)
     if (s_sync_req) {
         s_sync_req = false;
         ads_sync_pulse();
+        s_sync_guard = SYNC_GUARD_FRAMES;
+        s_skip_in = ADS_SINC3_SETTLE;
+        bump_epoch();                          /* the sample grid moves */
         ESP_LOGI(TAG, "SYNC pulse sent");
     }
     int ch = s_mux_ch;
     if (ch >= 0) {
         s_mux_ch = -1;
-        gpio_intr_disable(ADC_DRDY_GPIO);
+        /* DRDY keeps counting: the frames this costs show up as held samples. */
         esp_err_t err = ads_set_mux((uint8_t)ch, (ads_mux_t)s_mux_val, s_set.phase[ch]);
         ESP_LOGI(TAG, "CH%d input mux -> %u (%s)", ch, s_mux_val, esp_err_to_name(err));
-        ulTaskNotifyTake(pdTRUE, 0);
-        gpio_intr_enable(ADC_DRDY_GPIO);
     }
 }
 
@@ -353,65 +591,45 @@ static void acq_task(void *arg)
     (void)arg;
     esp_task_wdt_add(NULL);
     bool ok = reconfigure();
-    uint32_t idle = 0;
 
     for (;;) {
         if (s_pending_flag) {
             s_pending_flag = false;
             s_set = s_pending;
             ok = reconfigure();
-            idle = 0;
         }
 
-        uint32_t n = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
         esp_task_wdt_reset();
 
         if (s_paused) continue;
+        int64_t now = esp_timer_get_time();
         if (!ok) {
-            if (++idle >= RETRY_TICKS) { idle = 0; ok = reconfigure(); }
+            if (now - s_last_try >= RETRY_US) ok = reconfigure();
             continue;
         }
-        if (n == 0) {
-            if (s_st.clock_ok) ESP_LOGW(TAG, "No DRDY for 100 ms: CLKIN missing or the ADC lost power");
-            s_st.clock_ok = false;
-            if (++idle >= RETRY_TICKS) { idle = 0; ok = reconfigure(); }
+
+        if (s_drdy_cnt == s_seen) {            /* timeout or a control wakeup */
+            if (now - s_last_evt >= NO_DRDY_US) {
+                if (s_st.clock_ok) ESP_LOGW(TAG, "No DRDY for 100 ms: CLKIN missing or the ADC lost power");
+                s_st.clock_ok = false;
+                if (now - s_last_evt >= RETRY_US && now - s_last_try >= RETRY_US) {
+                    ok = reconfigure();
+                    continue;
+                }
+            }
+            handle_requests();
             continue;
         }
-        idle = 0;
+
+        s_last_evt = now;
         if (!s_st.clock_ok) { s_st.clock_ok = true; ESP_LOGI(TAG, "DRDY running"); }
-        if (n > 1) s_st.overruns += n - 1;
 
-        handle_requests();
-
-        int64_t t = s_drdy_t;
-        int32_t raw[ADS_MAX_CH] = { 0 };
-        esp_err_t err = ads_read_frame(raw);
-        if (err == ESP_ERR_INVALID_CRC) s_st.crc_errors++;
-        else if (err != ESP_OK) continue;
-
-        for (int c = 0; c < ACQ_NCH; c++) {
-            if (raw[c] >= CLIP_COUNTS || raw[c] <= -CLIP_COUNTS) s_acc.clips[c]++;
-            s_hist[c][s_hpos] = raw[c];
+        if (!service_drdy()) {
+            ok = reconfigure();
+            continue;
         }
-        s_hpos = s_hpos + 1 == s_taps ? 0 : s_hpos + 1;
-
-        portENTER_CRITICAL(&s_mux);
-        s_n_in++;
-        s_last_t = t;
-        s_st.n_in = s_n_in;
-        s_st.adc_status = ads_info()->status;
-        portEXIT_CRITICAL(&s_mux);
-
-        int decim = s_set.decim ? s_set.decim : 1;
-        if (++s_dcount < decim) continue;
-        s_dcount = 0;
-
-        int32_t y[ACQ_NCH];
-        for (int c = 0; c < ACQ_NCH; c++) y[c] = fir_out(c);
-        int64_t t_center = t - (int64_t)llround(s_st.group_delay_s * 1e6);
-        ring_push(t_center, y);
-        s_st.seq = s_seq;
-        stats_push(y);
+        handle_requests();
     }
 }
 

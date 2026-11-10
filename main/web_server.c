@@ -108,8 +108,12 @@ static void config_sanitize(void)
     if (g_config.http_port == 0) g_config.http_port = 80;
     if (g_config.clk_src > ACQ_CLK_LTC6903) g_config.clk_src = ACQ_CLK_EXT;
     if (g_config.clk_hz < 1000000 || g_config.clk_hz > 8400000) g_config.clk_hz = 8192000;
-    if (ads_osr_code(g_config.osr) < 0) g_config.osr = 4096;
+    if (ads_osr_code(g_config.osr) < 0 || g_config.osr < ACQ_OSR_MIN) g_config.osr = 4096;
     if (g_config.decim == 0) g_config.decim = 1;
+    if (g_config.decim > ACQ_DECIM_MAX) {
+        ESP_LOGW(TAG, "Stored decim %u is past the FIR limit of %d: using 10", g_config.decim, ACQ_DECIM_MAX);
+        g_config.decim = 10;
+    }
     if (g_config.ref > TB_REF_RTC) g_config.ref = TB_REF_NONE;
     for (int c = 0; c < ACQ_NCH; c++) {
         seismo_ch_cfg_t *ch = &g_config.ch[c];
@@ -522,13 +526,13 @@ esp_err_t config_set_kv(seismo_config_t *c, const char *key, const char *v,
         if (c->clk_hz != (uint32_t)l) *acq = true;
         c->clk_hz = (uint32_t)l;
     } else if (strcmp(key, "osr") == 0) {
-        if (!parse_long(v, 128, 16256, &l) || ads_osr_code((uint16_t)l) < 0) {
-            *err = "osr: 128, 256, 512, 1024, 2048, 4096, 8192 or 16256"; goto bad;
+        if (!parse_long(v, ACQ_OSR_MIN, 16256, &l) || ads_osr_code((uint16_t)l) < 0) {
+            *err = "osr: 512, 1024, 2048, 4096, 8192 or 16256"; goto bad;
         }
         if (c->osr != l) *acq = true;
         c->osr = (uint16_t)l;
     } else if (strcmp(key, "decim") == 0) {
-        if (!parse_long(v, 1, 50, &l)) { *err = "decim: 1..50"; goto bad; }
+        if (!parse_long(v, 1, ACQ_DECIM_MAX, &l)) { *err = "decim: 1..18"; goto bad; }
         if (c->decim != l) *acq = true;
         c->decim = (uint8_t)l;
     } else if (strcmp(key, "taps") == 0) {

@@ -35,6 +35,7 @@ typedef enum {
     FAULT_ADC_OVERRUN     = 1u << 13,  /* a DRDY was served late and a frame was lost */
     FAULT_ADC_CLIP        = 1u << 14,  /* a channel hit full scale in the last second */
     FAULT_NO_TIME         = 1u << 15,  /* no SNTP sync yet: timestamps are relative  */
+    FAULT_ADC_STATUS      = 1u << 16,  /* ADC reset itself or resynced on its own     */
 } fault_id_t;
 
 /* A missing ADC is a process fault on purpose: firmware tested on a bare

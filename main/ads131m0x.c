@@ -155,10 +155,16 @@ esp_err_t ads_reset_and_probe(void)
 void ads_sync_pulse(void)
 {
     /* Between 1 and 2048 CLKIN periods is a sync, not a reset. 20 us is
-     * well inside that window for any CLKIN from 1 to 8.4 MHz. */
+     * well inside that window for any CLKIN from 1 to 8.4 MHz. Interrupts
+     * stay masked for the pulse: an ISR stretching the low time past 2048
+     * periods (250 us at 8.192 MHz) would turn the sync into a reset and
+     * silently drop the whole configuration. */
+    static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+    portENTER_CRITICAL(&mux);
     gpio_set_level(ADC_SYNC_GPIO, 0);
     esp_rom_delay_us(20);
     gpio_set_level(ADC_SYNC_GPIO, 1);
+    portEXIT_CRITICAL(&mux);
 }
 
 esp_err_t ads_rreg(uint8_t addr, uint16_t *val)

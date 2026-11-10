@@ -9,9 +9,13 @@
  * samples into a ring that the web API and (later) the PSN stream read.
  *
  * Output sample timestamps are the DRDY time of the newest input sample
- * minus the FIR group delay ((taps - 1) / 2 input periods), mapped to UTC
- * through the system clock. They mark when the ground moved, not when the
- * sample left the filter.
+ * minus the total group delay (ADC sinc3, 1.5 input periods, plus the FIR,
+ * (taps - 1) / 2 input periods), mapped to UTC through the system clock.
+ * They mark when the ground moved, not when the sample left the filter.
+ *
+ * Every input period counts, read or not: a lost or corrupt input sample is
+ * replaced by the last good one, the sample counter still advances, and the
+ * output samples whose FIR window holds it carry a flag.
  */
 
 #ifndef ACQ_H
@@ -23,6 +27,18 @@
 
 #define ACQ_NCH         2
 #define ACQ_RING_LEN    4096      /* output samples kept for the web API */
+
+/* Limits the FIR and the task can honour. A Blackman FIR needs about
+ * 14 x decim taps to keep aliases out of 0..0.4 x f_out; 255 taps cover
+ * decim 18. Below OSR 512 (8 kSPS) one task wake per sample is too slow. */
+#define ACQ_DECIM_MAX   18
+#define ACQ_OSR_MIN     512
+
+/* acq_sample_t.flags: set on every output whose FIR window holds such an input */
+#define ACQ_F_GAP       0x01      /* an input sample was lost and held */
+#define ACQ_F_CRC       0x02      /* an input frame failed its CRC and was held */
+#define ACQ_F_UNSETTLED 0x04      /* sinc3 settling after a SYNC, inputs held */
+#define ACQ_F_CLIP      0x08      /* an input sample was at full scale */
 
 typedef enum {
     ACQ_CLK_EXT = 0,      /* oscillator on CLKIN, LTC6903 output cut */
@@ -58,17 +74,20 @@ typedef struct {
     uint32_t clk_hz_actual;   /* what the clock path was set to */
     double   fs_in;           /* nominal input rate, SPS */
     double   fs_out;          /* nominal output rate, SPS */
-    double   group_delay_s;
-    uint64_t n_in;            /* input samples since (re)start */
+    double   group_delay_s;   /* sinc3 + FIR */
+    uint64_t n_in;            /* input periods since (re)start, lost ones included */
     uint32_t seq;             /* output samples since (re)start */
     uint32_t crc_errors;
-    uint32_t overruns;
+    uint32_t overruns;        /* input samples lost and held */
+    uint32_t stale_frames;    /* backlog frames dropped: older than the DRDY count allows */
+    uint32_t status_events;   /* unexpected STATUS: self-reset, resync */
     uint32_t restarts;
     acq_ch_stats_t ch[ACQ_NCH];   /* last full 1 s window of output samples */
 } acq_status_t;
 
 typedef struct {
     uint32_t seq;
+    uint8_t  flags;           /* ACQ_F_* */
     int64_t  utc_us;          /* 0 when no wall-clock time yet */
     int32_t  v[ACQ_NCH];
 } acq_sample_t;

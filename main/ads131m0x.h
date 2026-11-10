@@ -57,6 +57,21 @@
 #define ADS_ST_REG_MAP      (1u << 13)
 #define ADS_ST_CRC_ERR      (1u << 12)
 #define ADS_ST_RESET        (1u << 10)
+#define ADS_ST_WLENGTH_MASK (3u << 8)
+#define ADS_ST_WLENGTH_24   (1u << 8)
+#define ADS_ST_DRDY0        (1u << 0)   /* new data on CH0 in this frame */
+#define ADS_ST_DRDY1        (1u << 1)
+#define ADS_ST_DRDY_MASK(nch) ((uint16_t)((1u << (nch)) - 1))
+
+/* sinc3 decimator: symmetric impulse response 3 x OSR modulator clocks long,
+ * so the output lags the input by 1.5 data periods; the first 3 periods
+ * after a SYNC or a reset are not settled. Confirm the latency on the bench. */
+#define ADS_SINC3_DELAY_PERIODS 1.5
+#define ADS_SINC3_SETTLE        3
+
+/* Data FIFO depth per channel ("Collecting Data for the First Time or After
+ * a Pause"): two unread conversions are kept, the oldest is dropped first. */
+#define ADS_FIFO_DEPTH      2
 
 /* MODE: 24-bit words, SPI timeout on, DRDY from the lagging channel, DRDY
  * as a level (low until the frame is read), RESET flag cleared. */
