@@ -92,7 +92,13 @@ typedef struct {
 /** @brief Start the task. bus may be NULL when no RTC is fitted. */
 esp_err_t timebase_init(tb_ref_t ref, bool rising, bool use_rtc, i2c_master_bus_handle_t bus);
 
-/** @brief Start SNTP. Call on the first IP address; later calls do nothing. */
+/**
+ * @brief Let DHCP option 42 supply the first NTP server. Call after
+ * esp_netif_init() and before WiFi starts, so the first lease counts.
+ */
+void timebase_net_init(void);
+
+/** @brief Start SNTP on the first IP address; on later calls (reconnects) poll now. */
 void timebase_start_sntp(void);
 
 /**

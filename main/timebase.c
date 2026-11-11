@@ -387,22 +387,82 @@ static void repoll_cb(void *arg)
     esp_sntp_restart();
 }
 
+/* Server slots. Slot 0 belongs to DHCP option 42: a LAN server (usually the
+ * router) is a far better sample source than the pool across a jittery
+ * uplink. The Kconfig servers sit behind it as fallback. lwIP clears every
+ * slot after the DHCP ones when a lease names a server, so the fallback
+ * names are set again on each IP-up. An empty slot 0 (no option 42) costs
+ * one retry timeout before lwIP moves on. */
+#define NTP_SLOT_DHCP      0
+#define NTP_SLOT_FALLBACK  1
+
+static const char *const s_ntp_fallback[] = {
+    CONFIG_SEISMO_NTP_SERVER_1, CONFIG_SEISMO_NTP_SERVER_2,
+    CONFIG_SEISMO_NTP_SERVER_3, CONFIG_SEISMO_NTP_SERVER_4,
+};
+_Static_assert(NTP_SLOT_FALLBACK + sizeof(s_ntp_fallback) / sizeof(s_ntp_fallback[0])
+               <= CONFIG_LWIP_SNTP_MAX_SERVERS, "raise CONFIG_LWIP_SNTP_MAX_SERVERS");
+
+void timebase_net_init(void)
+{
+#if CONFIG_LWIP_DHCP_GET_NTP_SRV
+    esp_sntp_servermode_dhcp(true);
+#endif
+}
+
+static void set_fallback_servers(void)
+{
+    for (size_t i = 0; i < sizeof(s_ntp_fallback) / sizeof(s_ntp_fallback[0]); i++) {
+        esp_sntp_setservername((u8_t)(NTP_SLOT_FALLBACK + i), s_ntp_fallback[i]);
+    }
+}
+
+static void log_ntp_servers(const char *what)
+{
+    char dhcp[IPADDR_STRLEN_MAX] = "none";
+    const ip_addr_t *a = esp_sntp_getserver(NTP_SLOT_DHCP);
+    if (a && !ip_addr_isany(a)) ipaddr_ntoa_r(a, dhcp, sizeof(dhcp));
+    ESP_LOGI(TAG, "%s: DHCP %s, then %s, %s, %s, %s", what, dhcp,
+             s_ntp_fallback[0], s_ntp_fallback[1], s_ntp_fallback[2], s_ntp_fallback[3]);
+}
+
 void timebase_start_sntp(void)
 {
-    if (s_sntp_started) return;
+    if (s_sntp_started) {
+        /* Back from an outage: do not wait up to an hour for the next poll.
+         * A new lease may have cleared the fallback slots. */
+        set_fallback_servers();
+        log_ntp_servers("Network address up, SNTP poll now");
+        esp_sntp_restart();
+        return;
+    }
     s_sntp_started = true;
     if (!s_repoll_timer) {
         const esp_timer_create_args_t rp = { .callback = repoll_cb, .name = "ntp_repoll" };
         if (esp_timer_create(&rp, &s_repoll_timer) != ESP_OK) s_repoll_timer = NULL;
     }
-    esp_sntp_config_t cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(4,
-        ESP_SNTP_SERVER_LIST(CONFIG_SEISMO_NTP_SERVER_1, CONFIG_SEISMO_NTP_SERVER_2,
-                             CONFIG_SEISMO_NTP_SERVER_3, CONFIG_SEISMO_NTP_SERVER_4));
+
+    /* No servers through esp_netif: it would write them from slot 0 and
+     * overwrite the DHCP server. Set them by slot, then start. */
+    esp_sntp_config_t cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG(CONFIG_SEISMO_NTP_SERVER_1);
+    cfg.num_of_servers = 0;
+#if CONFIG_LWIP_DHCP_GET_NTP_SRV
+    cfg.server_from_dhcp = true;
+#endif
     cfg.sync_cb = NULL;            /* sntp_sync_time() above decides and reports */
     cfg.wait_for_sync = false;     /* nothing waits on the semaphore */
+    cfg.start = false;
     esp_err_t err = esp_netif_sntp_init(&cfg);
-    if (err != ESP_OK) ESP_LOGE(TAG, "SNTP init: %s", esp_err_to_name(err));
-    else ESP_LOGI(TAG, "SNTP started");
+    if (err == ESP_OK) {
+        set_fallback_servers();
+        err = esp_netif_sntp_start();
+    }
+    if (err != ESP_OK) {
+        s_sntp_started = false;
+        ESP_LOGE(TAG, "SNTP init: %s", esp_err_to_name(err));
+        return;
+    }
+    log_ntp_servers("SNTP started");
 }
 
 /* ── RTC ────────────────────────────────────────────────────────────────── */

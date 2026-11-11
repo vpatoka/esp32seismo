@@ -16,3 +16,10 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 set(PROJECT_VER "0.1.0")
 
 project(vseismo)
+
+# SNTP sample quality. Stock lwIP takes the server's transmit time as is, so
+# reply delay on a jittery uplink becomes clock error. Compensate for the
+# round trip (RFC 4330 offset) and accept only replies that echo our own
+# request timestamp, from the server we asked.
+idf_component_get_property(lwip_lib lwip COMPONENT_LIB)
+target_compile_definitions(${lwip_lib} PRIVATE SNTP_COMP_ROUNDTRIP=1 SNTP_CHECK_RESPONSE=2)

@@ -585,6 +585,7 @@ void app_main(void)
     ota_selftest_begin();
 
     ESP_ERROR_CHECK(esp_netif_init());
+    timebase_net_init();               /* before WiFi: the first DHCP lease may name an NTP server */
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler, NULL, NULL));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event_handler, NULL, NULL));
