@@ -54,7 +54,7 @@ cp .env.example .env                      # edit: station URL, SEED codes, relay
 D=$(grep ^DATA_ROOT .env | cut -d= -f2)
 mkdir -p "$D"/ring "$D"/sds "$D"/bridge "$D"/slink2dali "$D"/ssh
 
-# Tunnel key, used only for the relay forward (see relay/README.md)
+# Tunnel key, used only for the relay forward (see relay/README.md, step 4)
 ssh-keygen -t ed25519 -N '' -C vseismo-nas -f "$D"/ssh/id_ed25519
 ssh-keyscan -t ed25519 relay.example.org > "$D"/ssh/known_hosts
 ssh-keygen -lf "$D"/ssh/known_hosts       # compare with the fingerprint on the VPS itself

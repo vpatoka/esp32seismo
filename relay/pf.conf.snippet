@@ -1,0 +1,17 @@
+# vseismo relay: merge into /etc/pf.conf, then: pfctl -nf /etc/pf.conf && pfctl -f /etc/pf.conf
+#
+# Public: SeedLink 18000. Private: DataLink 16000 (tunnel only) and the
+# ringserver status page 18080, both reached over lo0, which pf skips.
+
+table <seedlink_abuse> persist
+
+# DataLink and the status page never from outside.
+block in quick on egress proto tcp to port { 16000 18080 }
+
+# Clients that open connections too fast are cut off and listed.
+block in quick on egress from <seedlink_abuse>
+pass in on egress proto tcp to port 18000 keep state \
+	(max-src-conn 10, max-src-conn-rate 20/60, overload <seedlink_abuse> flush global)
+
+# Empty the abuse table now and then from cron, for example hourly:
+#   pfctl -t seedlink_abuse -T expire 86400

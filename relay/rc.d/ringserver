@@ -1,0 +1,16 @@
+#!/bin/ksh
+#
+# /etc/rc.d/ringserver: SeedLink relay for vseismo.
+# Enable with: rcctl enable ringserver && rcctl set ringserver logger daemon.info
+
+daemon="/usr/local/bin/ringserver"
+daemon_flags="/etc/ringserver.conf"
+daemon_user="_ringserver"
+
+. /etc/rc.d/rc.subr
+
+# ringserver stays in the foreground and logs to stdout.
+rc_bg=YES
+rc_reload=NO
+
+rc_cmd $1

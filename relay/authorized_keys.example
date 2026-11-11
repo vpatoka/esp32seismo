@@ -1,0 +1,1 @@
+restrict,port-forwarding,permitopen="127.0.0.1:16000",command="/sbin/nologin" ssh-ed25519 AAAA...replace-with-the-NAS-public-key... vseismo-nas

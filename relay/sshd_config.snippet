@@ -1,0 +1,18 @@
+# vseismo tunnel user: append to the end of /etc/ssh/sshd_config, then
+#   sshd -t && rcctl reload sshd
+# Belt and braces with the restrictions in authorized_keys: even a key
+# added without them can do nothing but forward to the DataLink port.
+
+Match User seismo
+	AuthenticationMethods publickey
+	PasswordAuthentication no
+	KbdInteractiveAuthentication no
+	AllowTcpForwarding local
+	PermitOpen 127.0.0.1:16000
+	AllowAgentForwarding no
+	AllowStreamLocalForwarding no
+	X11Forwarding no
+	PermitTTY no
+	PermitTunnel no
+	GatewayPorts no
+	ForceCommand /sbin/nologin

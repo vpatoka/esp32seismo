@@ -1,0 +1,17 @@
+# StationXML for receivers: https://www.example.org/seismo/XX.VSEIS.xml
+# Add inside the existing TLS `server "www.example.org"` block of /etc/httpd.conf,
+# then: httpd -n && rcctl reload httpd
+# Files live in /var/www/seismo (httpd is chrooted to /var/www).
+
+	location "/seismo/*" {
+		root "/seismo"
+		request strip 1
+		directory no auto index
+	}
+
+# httpd's built-in types have no .xml. If the server block has no `types`
+# section yet, add this at the top level of httpd.conf:
+#
+# types {
+# 	include "/usr/share/misc/mime.types"
+# }
