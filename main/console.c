@@ -15,13 +15,17 @@
 #include "timebase.h"
 #include "web_server.h"
 
+#include <fcntl.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
+#include <unistd.h>
 #include "esp_app_desc.h"
 #include "esp_console.h"
+#include "linenoise/linenoise.h"
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_system.h"
@@ -238,6 +242,46 @@ static int cmd_factory(int argc, char **argv)
     return 0;
 }
 
+/* When the terminal does not answer the escape-sequence probe within its
+ * 500 ms (idf_monitor is often still busy writing at boot), the console
+ * runs in dumb mode and the late answer, ESC [ 0 n, stays queued as input.
+ * Dumb mode drops the ESC but keeps "[0n", which glues onto the first
+ * command. Arrow keys leave "[A" and the like the same way. In dumb mode
+ * stdin is read through this filter: whole escape sequences are dropped,
+ * everything else passes. Smart terminals keep linenoise's own reader,
+ * which needs those sequences for editing. */
+static ssize_t console_read(int fd, void *buf, size_t len)
+{
+    static enum { IN_TEXT, IN_ESC, IN_CSI } s_state = IN_TEXT;
+    uint8_t *b = buf;
+    for (;;) {
+        ssize_t n = read(fd, buf, len);
+        if (n <= 0) return n;
+        size_t kept = 0;
+        for (ssize_t i = 0; i < n; i++) {
+            const uint8_t c = b[i];
+            switch (s_state) {
+                case IN_TEXT:
+                    if (c == 0x1B) s_state = IN_ESC;
+                    else b[kept++] = c;
+                    break;
+                case IN_ESC:                   /* ESC [ starts a CSI; ESC x is a two-byte escape */
+                    s_state = c == '[' ? IN_CSI : IN_TEXT;
+                    break;
+                case IN_CSI:
+                    if (c >= 0x40 && c <= 0x7E) {
+                        s_state = IN_TEXT;     /* final byte ends it */
+                    } else if (c < 0x20 || c > 0x3F) {
+                        s_state = IN_TEXT;     /* malformed: keep the byte (an Enter must not vanish) */
+                        b[kept++] = c;
+                    }                          /* 0x20-0x3F: parameters and intermediates */
+                    break;
+            }
+        }
+        if (kept) return (ssize_t)kept;        /* all filtered: read again, never hand back 0 */
+    }
+}
+
 static const esp_console_cmd_t s_cmds[] = {
     { .command = "status",    .help = "ADC, rates, channel stats, time, WiFi, faults",   .func = cmd_status },
     { .command = "config",    .help = "Show settings as key=value (same as /api/config/export)", .func = cmd_config },
@@ -263,6 +307,15 @@ esp_err_t console_start(void)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Console init: %s", esp_err_to_name(err));
         return err;
+    }
+    /* The probe has run. In dumb mode, filter stray escape sequences. IDF's
+     * own reader is a select() that only exists so esp_console_stop_repl()
+     * can interrupt it; we never stop the REPL, so a blocking read does. */
+    if (linenoiseIsDumbMode()) {
+        const int fd = fileno(stdin);
+        const int flags = fcntl(fd, F_GETFL);
+        if (flags >= 0) fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
+        linenoiseSetReadFunction(console_read);
     }
     esp_console_register_help_command();
     for (size_t i = 0; i < sizeof(s_cmds) / sizeof(s_cmds[0]); i++) esp_console_cmd_register(&s_cmds[i]);
