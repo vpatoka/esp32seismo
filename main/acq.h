@@ -44,6 +44,9 @@
 #define ACQ_F_CRC       0x02      /* an input frame failed its CRC and was held */
 #define ACQ_F_UNSETTLED 0x04      /* sinc3 settling after a SYNC, inputs held */
 #define ACQ_F_CLIP      0x08      /* an input sample was at full scale */
+#define ACQ_F_TEST0     0x10      /* CH0 input mux off the amplifier (bench short or test signal) */
+#define ACQ_F_TEST1     0x20      /* CH1 likewise */
+#define ACQ_F_TEST(c)   (ACQ_F_TEST0 << (c))
 
 /* How DRDY and 1 Hz reference edges get their time. Chosen at boot. */
 typedef enum {
@@ -98,6 +101,7 @@ typedef struct {
     double   drdy_rate;       /* DRDY edges per esp_timer second, last 1 s check */
     uint32_t drdy_rate_bad;   /* 1 s checks off nominal by more than ACQ_RATE_TOL */
     uint32_t restarts;
+    uint8_t  mux[ACQ_NCH];    /* ads_mux_t in effect: 0 = amplifier; a restart sets it back */
     acq_ch_stats_t ch[ACQ_NCH];   /* last full 1 s window of output samples */
 } acq_status_t;
 
@@ -142,6 +146,9 @@ void acq_apply(const acq_settings_t *s);
 
 /** @brief Stop reading (before OTA flash writes or a restart). */
 void acq_pause(void);
+
+/** @brief Name of an ads_mux_t value: "normal", "short", "testp", "testn". */
+const char *acq_mux_name(uint8_t mux);
 
 /** @brief Runtime commands, executed by the acquisition task. */
 void acq_request_sync(void);

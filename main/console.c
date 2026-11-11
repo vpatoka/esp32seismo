@@ -78,9 +78,10 @@ static int cmd_status(int argc, char **argv)
     for (int c = 0; c < ACQ_NCH; c++) {
         const seismo_ch_cfg_t *cc = &g_config.ch[c];
         double uv = a.ch[c].rms * 1.2e6 / cc->pga / 8388608.0;
-        printf("ch%d %-6s  PGA %3u  mean %10.1f  rms %9.2f cnt (%.3f uV)  min %ld  max %ld  clips %lu\n",
+        printf("ch%d %-6s  PGA %3u  mean %10.1f  rms %9.2f cnt (%.3f uV)  min %ld  max %ld  clips %lu%s%s\n",
                c, cc->name, cc->pga, a.ch[c].mean, a.ch[c].rms, uv,
-               (long)a.ch[c].min, (long)a.ch[c].max, (unsigned long)a.ch[c].clips);
+               (long)a.ch[c].min, (long)a.ch[c].max, (unsigned long)a.ch[c].clips,
+               a.mux[c] ? "  mux=" : "", a.mux[c] ? acq_mux_name(a.mux[c]) : "");
     }
 
     if (t.time_valid) {

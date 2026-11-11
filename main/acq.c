@@ -68,7 +68,7 @@ static const char *TAG = "ACQ";
 #define BITS_PROBE_FRAMES 64
 
 /* Index into s_taint[] = bit position of the ACQ_F_* flag */
-#define TAINT_N           4
+#define TAINT_N           6
 
 static TaskHandle_t s_task;
 static volatile uint32_t s_drdy_cnt;                /* written by the ISR only */
@@ -84,6 +84,7 @@ static volatile bool  s_pending_flag;
 static volatile bool  s_sync_req;
 static volatile int   s_mux_ch = -1;
 static volatile uint8_t s_mux_val;
+static uint8_t s_mux_now[ACQ_NCH];      /* ads_mux_t in effect, task-owned; mirrored in s_st.mux */
 
 static acq_status_t s_st;
 static uint64_t s_n_in;
@@ -708,6 +709,12 @@ static void bump_epoch(void)
  * good sample: the FIR keeps its grid and the output carries the flag. */
 static void push_input(const int32_t *raw, int64_t t, uint8_t ev)
 {
+    /* A bench input (short or test signal) taints its own channel for as
+     * long as it is selected and one FIR window after, which also covers
+     * the ADC settling when the amplifier comes back. */
+    for (int c = 0; c < ACQ_NCH; c++) {
+        if (s_mux_now[c] != ADS_MUX_NORMAL) ev |= (uint8_t)ACQ_F_TEST(c);
+    }
     bool real = raw && !(ev & (ACQ_F_GAP | ACQ_F_CRC));
     if (real && s_skip_in) {
         s_skip_in--;
@@ -931,6 +938,7 @@ static bool reconfigure(void)
 
     memset(s_hold, 0, sizeof(s_hold));
     memset(s_taint, 0, sizeof(s_taint));
+    memset(s_mux_now, 0, sizeof(s_mux_now));    /* ads_configure() put every channel on its input */
     s_skip_in = 0;
     s_mute_out = (uint32_t)s_taps + ADS_SINC3_SETTLE;
     s_bits_seen = false;
@@ -944,6 +952,7 @@ static bool reconfigure(void)
     portENTER_CRITICAL(&s_mux);
     s_st.running = ok;
     s_st.adc_ok = ok;
+    memset(s_st.mux, 0, sizeof(s_st.mux));
     s_st.adc_id = ads_info()->id;
     s_st.clk_hz_actual = clk;
     s_st.fs_in = fs_in;
@@ -985,8 +994,15 @@ static void handle_requests(void)
     if (ch >= 0) {
         s_mux_ch = -1;
         /* DRDY keeps counting: the frames this costs show up as held samples. */
-        esp_err_t err = ads_set_mux((uint8_t)ch, (ads_mux_t)s_mux_val, s_set.phase[ch]);
-        note(ESP_LOG_INFO, "CH%d input mux -> %u (%s)", ch, s_mux_val, esp_err_to_name(err));
+        uint8_t val = s_mux_val;
+        esp_err_t err = ads_set_mux((uint8_t)ch, (ads_mux_t)val, s_set.phase[ch]);
+        if (err == ESP_OK) {
+            s_mux_now[ch] = val;
+            portENTER_CRITICAL(&s_mux);
+            s_st.mux[ch] = val;
+            portEXIT_CRITICAL(&s_mux);
+        }
+        note(ESP_LOG_INFO, "CH%d input mux -> %u (%s)", ch, val, esp_err_to_name(err));
     }
 }
 
@@ -1081,6 +1097,12 @@ void acq_pause(void)
 }
 
 void acq_request_sync(void) { s_sync_req = true; }
+
+const char *acq_mux_name(uint8_t mux)
+{
+    static const char *const names[] = { "normal", "short", "testp", "testn" };
+    return mux < 4 ? names[mux] : "?";
+}
 
 void acq_request_mux(uint8_t ch, uint8_t mux)
 {

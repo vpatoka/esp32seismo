@@ -9,12 +9,12 @@
   --page:#EEF2F0;--paper:#FCFDFB;--grid:#D6E3DC;--grid2:#B5CBBF;
   --ink0:#1E3A8A;--ink1:#B42318;--text:#1D2A26;--muted:#5B6B66;
   --line:#CBD6D0;--field:#FFFFFF;--ok:#2F7D4F;--warn:#9A6A12;--bad:#B42318;
-  --focus:#1E3A8A;
+  --test:#6D28D9;--focus:#1E3A8A;
 }
 @media (prefers-color-scheme:dark){
   :root{--page:#1A2026;--paper:#20282E;--grid:#2D3A3F;--grid2:#3B4B51;
     --ink0:#8FB3FF;--ink1:#FF8A7A;--text:#E4ECE8;--muted:#9AABA4;
-    --line:#34424A;--field:#232C33;--ok:#6BC28E;--warn:#E0B054;--bad:#FF8A7A;--focus:#8FB3FF}
+    --line:#34424A;--field:#232C33;--ok:#6BC28E;--warn:#E0B054;--bad:#FF8A7A;--test:#B79CFF;--focus:#8FB3FF}
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
@@ -117,6 +117,7 @@ progress{width:220px;height:10px}
   <span><i class="key" style="background:var(--ink1)"></i><span id="k1">H</span></span>
   <span title="An input sample inside the filter window was lost, failed its CRC, or was held while the ADC settled after a SYNC"><i class="key band" style="background:var(--warn)"></i>held input</span>
   <span title="An input sample inside the filter window was at full scale"><i class="key band" style="background:var(--bad)"></i>clipped</span>
+  <span title="A channel input was switched to a bench short or test signal inside the filter window"><i class="key band" style="background:var(--test)"></i>bench input</span>
   <label>Window <select id="win"><option>15</option><option>30</option><option selected>60</option><option>120</option></select> s</label>
   <label>Scale <select id="scale">
     <option value="auto" selected>auto per channel</option>
@@ -291,10 +292,11 @@ function drawDrum(){
       if(x2>40)g.fillText(utcStr(t),x2+4,H-6);}}
   for(var L=1;L<lanes;L++){g.strokeStyle=css('--grid2');g.beginPath();g.moveTo(0,L*lh+.5);g.lineTo(W,L*lh+.5);g.stroke();}
 
-  // Flagged samples (wave flags): amber = held input (gap, CRC, settling), red = clipped input.
+  // Flagged samples (wave flags): amber = held input (gap, CRC, settling), red = clipped input,
+  // violet = bench input (mux short or test signal on either channel).
   // Runs of the same kind merge into one band; a band is at least 2 px so one sample shows.
   var fb=S.flags,fn=Math.min(fb.length,N),fo=fb.length-fn,fi=0;
-  var kindOf=function(f){return !f?null:(f&8)?'--bad':'--warn';};
+  var kindOf=function(f){return !f?null:(f&8)?'--bad':(f&0x30)?'--test':'--warn';};
   g.globalAlpha=.22;
   while(fi<fn){var kd=kindOf(fb[fo+fi]);if(!kd){fi++;continue;}
     var fj=fi;while(fj+1<fn&&kindOf(fb[fo+fj+1])===kd)fj++;

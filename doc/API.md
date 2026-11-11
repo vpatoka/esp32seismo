@@ -132,6 +132,8 @@ curl 'http://vseismo/api/wave?since=0&max=5'
 | 1 | 2 | CRC: an input frame failed its CRC and was replaced by the last good one |
 | 2 | 4 | Unsettled: inputs held while the ADC filter settled after a SYNC |
 | 3 | 8 | Clip: an input sample was within 16 counts of full scale |
+| 4 | 16 | Bench input on CH0: its mux was on a short or test signal (`/api/acq/cmd` `mux`), or came back from one less than a filter window ago. The CH0 value is not ground motion |
+| 5 | 32 | Bench input on CH1, likewise |
 
 - After a restart, output starts only once the FIR history holds settled data (taps + 3 input samples), so there's no ramp up from zero.
 - Poll again with `since=<next>`. If `seq0` isn't the `next` you asked for, there's a gap.
@@ -177,6 +179,7 @@ curl 'http://vseismo/api/wave?since=118000&max=1000&order=oldest'
 | `amp_mv` | mV | At the EQAMP output: `rms_uv / div` |
 | `vel_ums` | µm/s | Ground velocity in the passband: `amp_mv / amp / sens`. `null` until both `amp` and `sens` are set. |
 | `dbfs` | dB | Sine-equivalent level relative to full scale |
+| `mux` | | Input in effect: `normal` (amplifier), `short`, `testp` or `testn`. Not saved; any acquisition restart and every reboot return it to `normal` |
 
 ## Settings keys
 
@@ -217,7 +220,7 @@ curl -d cmd=mux -d ch=0 -d mode=normal http://vseismo/api/acq/cmd
 curl -d cmd=sync http://vseismo/api/acq/cmd
 ```
 
-`mux` isn't saved. `zero` assumes the chip subtracts OCAL from each result, as the ADS131M02 datasheet describes. Confirm the sign once on the bench: after `zero`, the shorted-input mean should land near 0, not double.
+`mux` isn't saved. While a channel is off `normal`, `/api/acq` shows it and every output sample of that channel carries wave flag bit 4 (CH0) or 5 (CH1), so a recorder can mark or drop it. `zero` assumes the chip subtracts OCAL from each result, as the ADS131M02 datasheet describes. Confirm the sign once on the bench: after `zero`, the shorted-input mean should land near 0, not double.
 
 ## Backup and restore
 

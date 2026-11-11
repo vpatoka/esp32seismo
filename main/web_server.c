@@ -804,10 +804,12 @@ static esp_err_t api_acq_handler(httpd_req_t *req)
         json_escape(name, sizeof(name), cc->name);
         n += snprintf(buf + n, 2048 - (size_t)n,
             "%s{\"name\":\"%s\",\"pga\":%u,\"mean\":%.1f,\"rms\":%.2f,\"min\":%ld,\"max\":%ld,"
-            "\"clips\":%lu,\"lsb_uv\":%.6f,\"rms_uv\":%s,\"amp_mv\":%s,\"vel_ums\":%s,\"dbfs\":%s}",
+            "\"clips\":%lu,\"lsb_uv\":%.6f,\"rms_uv\":%s,\"amp_mv\":%s,\"vel_ums\":%s,\"dbfs\":%s,"
+            "\"mux\":\"%s\"}",
             c ? "," : "", name, cc->pga, s->mean, s->rms, (long)s->min, (long)s->max,
             (unsigned long)s->clips, lsb_uv, num(a, sizeof(a), rms_uv, 3),
-            num(b, sizeof(b), amp_mv, 4), num(d, sizeof(d), vel, 4), num(e, sizeof(e), dbfs, 1));
+            num(b, sizeof(b), amp_mv, 4), num(d, sizeof(d), vel, 4), num(e, sizeof(e), dbfs, 1),
+            acq_mux_name(st.mux[c]));
     }
     if (n < 2040) n += snprintf(buf + n, 2048 - (size_t)n, "]}");
     esp_err_t r = (n >= 2048) ? send_json_err(req, "acq overflow")
