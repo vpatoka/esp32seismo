@@ -22,7 +22,9 @@ A segment is a run of samples with the same epoch, time quality and flag
 set, contiguous in seq and time. Its flags go into every record packed
 from it: station flags as miniSEED 2 data quality bits, the time quality
 as blockette 1001, plus "clock locked" (I/O flags) for pps or "time tag
-questionable" (data quality) for rtc.
+questionable" (data quality) for rtc. A channel on a bench input (station
+flag bit 4 for CH0, 5 for CH1) gets activity bit 0, "calibration signals
+present", on its own records only.
 """
 
 import base64
@@ -62,6 +64,14 @@ TQ_QUALITY = {"pps": 100, "ntp": 70, "rtc": 20}
 
 V2_IO_CLOCK_LOCKED = 0x20       # fixed header byte 37, bit 5
 V2_DQ_TIME_QUESTIONABLE = 0x80  # fixed header byte 38, bit 7
+V2_ACT_CALIBRATION = 0x01       # fixed header byte 36, bit 0
+
+STATION_FLAGS = 0x3F            # bits 0-3 data quality, 4-5 bench input per channel
+
+
+def test_flag(c):
+    """Station flag: channel c's input was a bench short or test signal."""
+    return 0x10 << c
 
 
 def env(name, default=None):
@@ -344,7 +354,7 @@ def flag_runs(flags, n):
     runs, start = [], 0
     for i in range(1, n + 1):
         if i == n or flags[i] != flags[start]:
-            runs.append((start, i, flags[start] & 0x0F))
+            runs.append((start, i, flags[start] & STATION_FLAGS))
             start = i
     return runs
 
@@ -471,9 +481,14 @@ class Bridge:
         seg = self.seg
         if not seg:
             return
+        bench = seg.key[2]
         for rec in seg.pack(flush):
             msr = next(MS3Record.from_buffer(rec))
             c = self.sourceids.index(msr.sourceid)
+            if bench & test_flag(c):
+                rec = bytearray(rec)
+                rec[36] |= V2_ACT_CALIBRATION
+                rec = bytes(rec)
             self.outbox.append((c, rec, msr.starttime // 1000, msr.endtime // 1000))
         for c in range(self.nch):
             upto = (seg.seq_end - seg.unsent(c)) & SEQ_MASK

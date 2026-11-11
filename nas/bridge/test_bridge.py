@@ -112,7 +112,7 @@ def decode(recs, streamid):
         assert start_us == m.starttime // 1000 and end_us == m.endtime // 1000
         out.append({"t_us": m.starttime // 1000, "v": list(m.datasamples),
                     "extra": json.loads(m.extra) if m.extra else {},
-                    "io": raw[37], "dq": raw[38]})
+                    "act": raw[36], "io": raw[37], "dq": raw[38]})
     return out
 
 
@@ -207,6 +207,21 @@ class BridgeTest(unittest.TestCase):
         starts = {r["t_us"] for r in got}
         self.assertIn(self.st.s[1200]["t_us"], starts)
         self.assertIn(self.st.s[2000]["t_us"], starts)
+
+    def test_bench_input_marks_only_its_channel(self):
+        self.st.push(1500)
+        self.st.push(400, flags=0x10)             # CH0 shorted on the bench
+        self.st.push(1500)
+        b = self.bridge()
+        self.run_until_idle(b)
+        b.shutdown()
+        ch0 = self.check_channel(self.dl.recs, 0, self.st.s)
+        ch1 = self.check_channel(self.dl.recs, 1, self.st.s)
+        marked = [r for r in ch0 if r["act"] & 0x01]
+        self.assertEqual(sum(len(r["v"]) for r in marked), 400)
+        self.assertFalse(any(r["act"] & 0x01 for r in ch1), "CH1 carried real data")
+        for r in marked:
+            self.assertEqual(r["dq"], 0, "a bench input is not a data quality fault")
 
     def test_rtc_marks_time_questionable(self):
         self.st.tq = "rtc"

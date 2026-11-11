@@ -39,8 +39,9 @@ One record never mixes time quality, epoch (a station restart moves the time gri
 | `tq` `ntp` | Timing quality 70 |
 | `tq` `rtc` | Data quality bit 7, time tag questionable. Timing quality 20 |
 | `tq` `none` | Not archived. Counted in `vseismo_untimed_samples_total` |
+| Flag bit 4 or 5, bench input on CH0 or CH1 (`mux` short or test signal) | Activity bit 0, calibration signals present, on that channel's records only |
 
-Bench modes (`mux` short or test signal) are not visible in the API yet, so their data is archived like any other. Don't run bench tests while the stream is public.
+Bench tests are archived and streamed, but marked: receivers that honour the calibration bit skip them. A record never mixes bench and real samples.
 
 ## Install
 
