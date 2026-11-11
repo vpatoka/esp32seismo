@@ -1,0 +1,389 @@
+esptool --chip esp32c5 -p /dev/ttyACM0 -b 460800 --before=default-reset --after=hard-reset write-flash --flash-mode dio --flash-freq 80m --flash-size 8MB 0x2000 bootloader/bootloader.bin 0x8000 partition_table/partition-table.bin 0xf000 ota_data_initial.bin 0x20000 vseismo.bin --skip-flashed
+esptool v5.4.0
+Connected to ESP32-C5 on /dev/ttyACM0:
+Chip type:          ESP32-C5 (revision v1.2)
+Features:           Wi-Fi 6 (dual-band), BT 5 (LE), IEEE802.15.4, Single Core + LP Core, 240MHz
+Crystal frequency:  48MHz
+USB mode:           USB-Serial/JTAG
+MAC:                10:bd:a3:ff:fe:df:13:28
+BASE MAC:           10:bd:a3:df:13:28
+MAC_EXT:            ff:fe
+
+Stub flasher running.
+Changing baud rate to 460800...
+Changed.
+
+Configuring flash size...
+
+Writing 'bootloader/bootloader.bin' at 0x00002000...
+SHA digest in image updated.
+Flash will be erased from 0x00002000 to 0x00006fff...
+Wrote 19824 bytes (12597 compressed) at 0x00002000 in 0.2 seconds (1033.4 kbit/s).
+Hash of data verified.
+
+Writing 'partition_table/partition-table.bin' at 0x00008000...
+'partition_table/partition-table.bin' at 0x00008000 already in flash, skipping write.
+
+Writing 'ota_data_initial.bin' at 0x0000f000...
+Flash will be erased from 0x0000f000 to 0x00010fff...
+Wrote 8192 bytes (31 compressed) at 0x0000f000 in 0.0 seconds (3270.2 kbit/s).
+Hash of data verified.
+
+Writing 'vseismo.bin' at 0x00020000...
+Flash will be erased from 0x00020000 to 0x00165fff...
+Wrote 1334016 bytes (806096 compressed) at 0x00020000 in 5.3 seconds (2009.3 kbit/s).
+Hash of data verified.
+
+Hard resetting via RTS pin...
+Executing action: monitor
+Running idf_monitor in directory /local/GIT/SUPPORT/ESP32/vseismo
+Executing "/home/vpatoka/.espressif/python_env/idf6.1_py3.12_env/bin/python /home/vpatoka/esp/esp-idf-v6.1.0/tools/idf_monitor.py -p /dev/ttyACM0 -b 115200 --toolchain-prefix riscv32-esp-elf- --target esp32c5 --revision 100 --decode-panic backtrace /local/GIT/SUPPORT/ESP32/vseismo/build/vseismo.elf /local/GIT/SUPPORT/ESP32/vseismo/build/bootloader/bootloader.elf -m '/home/vpatoka/.espressif/python_env/idf6.1_py3.12_env/bin/python' '/home/vpatoka/esp/esp-idf-v6.1.0/tools/idf.py'"...
+--- esp-idf-monitor 1.10.0 on /dev/ttyACM0 115200
+--- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H
+ESP-ROM:esp32c5-eco3-20250704
+Build:Jul  4 2025
+rst:0x15 (USB_UART_HPSYS),boot:0x1e (SPI_FAST_FLASH_BOOT)
+SPI mode:DIO, clock div:1
+load:0x408556c0,len:0x1150
+load:0x4084bba0,len:0xb34
+--- 0x4084bba0: call_start_cpu0 at /home/vpatoka/esp/esp-idf-v6.1.0/components/bootloader/subproject/main/bootloader_start.c:27
+load:0x4084e5a0,len:0x3098
+--- 0x4084e5a0: is_xmc_chip_strict at /home/vpatoka/esp/esp-idf-v6.1.0/components/bootloader_support/bootloader_flash/src/bootloader_flash.c:911
+entry 0x4084bba0
+--- 0x4084bba0: call_start_cpu0 at /home/vpatoka/esp/esp-idf-v6.1.0/components/bootloader/subproject/main/bootloader_start.c:27
+I (248) MSPI Timing: Enter flash timing tuning
+I (249) MSPI Timing: Enter psram timing tuning
+I (251) esp_psram: Found 8MB PSRAM device
+I (251) esp_psram: Speed: 80MHz
+I (251) cpu_start: Unicore app
+I (1297) esp_psram: SPI SRAM memory test OK
+I (1305) cpu_start: Pro cpu start user code
+I (1305) cpu_start: cpu freq: 240000000 Hz
+I (1305) app_init: Application information:
+I (1306) app_init: Project name:     vseismo
+I (1306) app_init: App version:      0.1.0
+I (1306) app_init: Compile time:     Nov 10 2026 11:09:12
+I (1306) app_init: ELF file SHA256:  1318500f4...
+I (1307) app_init: ESP-IDF:          v6.1
+I (1307) efuse_init: Min chip rev:     v1.0
+I (1307) efuse_init: Max chip rev:     v1.99 
+I (1307) efuse_init: Chip rev:         v1.2
+I (1307) heap_init: Initializing. RAM available for dynamic allocation:
+I (1308) heap_init: At 4082EC00 len 0002D9A0 (182 KiB): RAM
+I (1308) heap_init: At 4085C5A0 len 00002F58 (11 KiB): RAM
+I (1308) heap_init: At 50000024 len 00003FC4 (15 KiB): RTCRAM
+I (1308) esp_psram: Adding pool of 8192K of PSRAM memory to heap allocator
+I (1309) spi_flash: detected chip: generic
+I (1310) spi_flash: flash io: dio
+I (1310) sleep_gpio: Configure to isolate all GPIO pins in sleep state
+I (1311) sleep_gpio: Enable automatic switching of GPIO sleep configuration
+I (1311) esp_core_dump_flash: Init core dump to flash
+I (1311) esp_core_dump_flash: Found partition 'coredump' @ 620000 65536 bytes
+D (1312) esp_core_dump_flash: Blank core dump partition!
+W (1312) spi_flash: CPU frequency is set to 240MHz. esp_flash_write_encrypted() will automatically limit CPU frequency to 160MHz during execution.
+I (05:12:15.495) main_task: Started on CPU0
+I (05:12:15.496) main_task: Calling app_main()
+I (05:12:15.496) SEISMO: ==================================================
+I (05:12:15.496) SEISMO:   VSEISMO  vseismo v0.1.0  (Nov 10 2026 11:09:12)
+I (05:12:15.496) SEISMO:   ESP32-C5 rev v1.2, 1 core, IDF v6.1
+I (05:12:15.496) SEISMO:   Reset reason: USB
+I (05:12:15.497) SEISMO:   VE3VPT
+I (05:12:15.497) SEISMO: ==================================================
+I (05:12:15.516) WEB: No stored config, using defaults
+I (05:12:15.745) ACQ: Output ring: 131072 samples (3072 KB) in PSRAM
+I (05:12:15.747) ACQ: CLKIN from an external oscillator, 8192000 Hz nominal
+E (05:12:15.747) FAULT: Process fault raised: 0x8000 (mask 0x8000)
+I (05:12:15.748) TIME: No 1 Hz reference: sample rate is the nominal one
+I (05:12:15.750) pp: pp rom version: b025441
+I (05:12:15.751) net80211: net80211 rom version: b025441
+I (1824) wifi:wifi driver task: 408383a0, prio:23, stack:6656, core=0
+I (1835) wifi:wifi firmware version: e12a754
+I (1835) wifi:wifi certification version: v7.0
+I (1835) wifi:config NVS flash: enabled
+I (1836) wifi:config nano formatting: disabled
+I (1836) wifi:mac_version:HAL_MAC_ESP32AX_752MP_ECO2,ut_version:N, band mode:0x3
+I (1836) wifi:Init data frame dynamic rx buffer num: 32
+I (1836) wifi:Init static rx mgmt buffer num: 5
+I (1837) wifi:Init management short buffer num: 32
+I (1837) wifi:Init dynamic tx buffer num: 32
+I (1837) wifi:Init static tx FG buffer num: 2
+I (1837) wifi:Init static rx buffer size: 1700 (rxctrl:64, csi:512)
+I (1837) wifi:Init static rx buffer num: 10
+I (1838) wifi:Init dynamic rx buffer num: 32
+I (05:12:15.767) wifi_init: rx ba win: 6
+I (05:12:15.767) wifi_init: accept mbox: 6
+I (05:12:15.767) wifi_init: tcpip mbox: 32
+I (05:12:15.768) wifi_init: udp mbox: 6
+I (05:12:15.768) wifi_init: tcp mbox: 6
+I (05:12:15.768) wifi_init: tcp tx win: 5760
+I (05:12:15.768) wifi_init: tcp rx win: 5760
+E (05:12:15.768) ADS: No ADS131M0x: ID read 0x0000 (check CLKIN, SPI wiring, 3.3 V)
+E (05:12:15.768) FAULT: Process fault raised: 0x0080 (mask 0x8080)
+I (05:12:15.778) wifi_init: tcp mss: 1440
+I (05:12:15.778) wifi_init: WiFi IRAM OP enabled
+I (05:12:15.779) wifi_init: WiFi RX IRAM OP enabled
+I (05:12:15.779) wifi_init: WiFi SLP IRAM OP enabled
+--- WARNING: Writing to serial is timing out. Please make sure that your application supports an interactive console and that you have picked the correct console for serial communication.
+
+Type 'help' to get the list of commands.
+Use UP/DOWN arrows to navigate through command history.
+Press TAB when typing command name to auto-complete.
+
+Your terminal application does not support escape sequences.
+
+Line editing and history features are disabled.
+
+On Windows, try using Windows Terminal or Putty instead.
+vseismo>  [0I (05:12:16.330) CONSOLE: USB console ready: type "help"
+nI (05:12:16.331) SEISMO: No WiFi credentials: starting setup AP
+I (05:12:16.342) phy_init: phy_version 109,edb400d6,Mar 10 2026,10:22:11
+I (2982) wifi:11ax coex: WDEVAX_PTI0(0x55777555), WDEVAX_PTI1(0x00003377).
+
+I (2984) wifi:mode : sta (10:bd:a3:df:13:28) + softAP (10:bd:a3:df:13:29)
+I (2984) wifi:enable tsf
+W (2984) wifi:11ax/11ac mode can not work under phy bw 40M, the sta 2G phymode changed to 11N
+W (2985) wifi:11ax/11ac mode can not work under phy bw 40M, the sta 5G phymode changed to 11N
+I (2987) wifi:Total power save buffer number: 16
+I (2987) wifi:Init max length of beacon: 752/752
+I (2988) wifi:Init max length of beacon: 752/752
+I (05:12:16.920) esp_netif_lwip: DHCP server started on interface WIFI_AP_DEF with IP: 192.168.4.1
+I (05:12:16.921) DNS: Captive DNS up on UDP 53
+I (05:12:16.922) SEISMO: ==================================================
+I (05:12:16.922) SEISMO:   WiFi setup: join the open network "VSEISMO-1329"
+I (05:12:16.923) SEISMO:   The setup page should open by itself. If not:
+I (05:12:16.923) SEISMO:   http://192.168.4.1/portal
+I (05:12:16.923) SEISMO: ==================================================
+I (05:12:16.933) WEB: Portal HTTP server on port 80
+I (05:12:16.933) main_task: Returned from app_main()
+I (05:12:20.817) ACQ: CLKIN from an external oscillator, 8192000 Hz nominal
+E (05:12:20.826) ADS: No ADS131M0x: ID read 0x0000 (check CLKIN, SPI wiring, 3.3 V)
+I (05:12:25.935) ACQ: CLKIN from an external oscillator, 8192000 Hz nominal
+E (05:12:25.944) ADS: No ADS131M0x: ID read 0x0000 (check CLKIN, SPI wiring, 3.3 V)
+I (05:12:31.053) ACQ: CLKIN from an external oscillator, 8192000 Hz nominal
+E (05:12:31.062) ADS: No ADS131M0x: ID read 0x0000 (check CLKIN, SPI wiring, 3.3 V)
+I (22223) wifi:new:<1,0>, old:<1,1>, ap:<1,1>, sta:<0,0>, prof:1, snd_ch_cfg:0x0
+I (22226) wifi:(trc)phytype:CBW20-SGI, snr:64, maxRate:144, highestRateIdx:0
+W (22226) wifi:(trc)band:2G, phymode:3, highestRateIdx:0, lowestRateIdx:11, dataSchedTableSize:14
+I (22227) wifi:(trc)band:2G, rate(S-MCS7, rateIdx:0), ampdu(rate:S-MCS7, schedIdx(0, stop:8)), snr:64, ampduState:wait operational
+I (22227) wifi:ifidx:1, rssi:-32, nf:-96, phytype(0x3, CBW20-SGI), phymode(0x3, 11bgn), max_rate:144, he:0, vht:0, ht:1
+I (22228) wifi:(ht)max.RxAMPDULenExponent:3(65535 bytes), MMSS:5(4 us)
+I (22228) wifi:station: c6:66:9e:34:9c:d7 join, AID=1, bgn, 20
+I (05:12:36.158) SEISMO: Client c6:66:9e:34:9c:d7 joined the setup AP
+I (05:12:36.171) ACQ: CLKIN from an external oscillator, 8192000 Hz nominal
+E (05:12:36.180) ADS: No ADS131M0x: ID read 0x0000 (check CLKIN, SPI wiring, 3.3 V)
+W (22661) wifi:conn=0x408434f8 alloc softap rx ba index=0 ba index 8
+I (22662) wifi:<ba-add>extra, idx:0, ifx:1, tid:0, TAHI:0x101d79c, TALO:0x349e66c6, (ssn:2874, win:64), CONF:0xc0000001
+W (22821) wifi:conn=0x408434f8 alloc softap rx ba index=1 ba index 8
+I (22821) wifi:<ba-add>extra, idx:1, ifx:1, tid:6, TAHI:0x101d79c, TALO:0x349e66c6, (ssn:2212, win:64), CONF:0xc0006021
+I (05:12:37.112) esp_netif_lwip: DHCP server assigned IP to a client, IP is: 192.168.4.2
+I (23304) wifi:[ADDBA]TX addba request, tid:0, dialogtoken:1, bufsize:64, A-MSDU:0(not supported), policy:1(IMR), ssn:0(0x0)
+I (23307) wifi:[ADDBA]RX addba response, status:0, tid:0/tb:1(0xa1), bufsize:64, batimeout:0, txa_wnd:64
+I (05:12:41.289) ACQ: CLKIN from an external oscillator, 8192000 Hz nominal
+E (05:12:41.298) ADS: No ADS131M0x: ID read 0x0000 (check CLKIN, SPI wiring, 3.3 V)
+I (05:12:46.407) ACQ: CLKIN from an external oscillator, 8192000 Hz nominal
+E (05:12:46.416) ADS: No ADS131M0x: ID read 0x0000 (check CLKIN, SPI wiring, 3.3 V)
+I (05:12:51.525) ACQ: CLKIN from an external oscillator, 8192000 Hz nominal
+E (05:12:51.534) ADS: No ADS131M0x: ID read 0x0000 (check CLKIN, SPI wiring, 3.3 V)
+I (05:12:56.643) ACQ: CLKIN from an external oscillator, 8192000 Hz nominal
+E (05:12:56.652) ADS: No ADS131M0x: ID read 0x0000 (check CLKIN, SPI wiring, 3.3 V)
+I (05:13:01.761) ACQ: CLKIN from an external oscillator, 8192000 Hz nominal
+E (05:13:01.770) ADS: No ADS131M0x: ID read 0x0000 (check CLKIN, SPI wiring, 3.3 V)
+I (05:13:02.225) WEB: WiFi credentials saved for "Celebright", rebooting
+I (49300) wifi:station: c6:66:9e:34:9c:d7 leave, AID = 1, reason = 2, bss_flags is 33721459, bss:0x40830e8c
+I (49301) wifi:<ba-del>idx:0, tid:0
+I (49301) wifi:<ba-del>idx:1, tid:6
+I (49301) wifi:new:<1,1>, old:<1,0>, ap:<1,1>, sta:<0,0>, prof:1, snd_ch_cfg:0x0
+I (05:13:03.233) SEISMO: Client c6:66:9e:34:9c:d7 left the setup AP
+I (49324) wifi:flush txq
+I (49324) wifi:stop sw txq
+I (49324) wifi:lmac stop hw txq
+ESP-ROM:esp32c5-eco3-20250704
+Build:Jul  4 2025
+rst:0xc (SW_CPU),boot:0x1e (SPI_FAST_FLASH_BOOT)
+Core0 Saved PC:0x4080087c
+--- 0x4080087c: esp_restart_noos_inner at /home/vpatoka/esp/esp-idf-v6.1.0/components/esp_system/port/soc/esp32c5/system_internal.c:127
+SPI mode:DIO, clock div:1
+load:0x408556c0,len:0x1150
+load:0x4084bba0,len:0xb34
+--- 0x4084bba0: call_start_cpu0 at /home/vpatoka/esp/esp-idf-v6.1.0/components/bootloader/subproject/main/bootloader_start.c:27
+load:0x4084e5a0,len:0x3098
+--- 0x4084e5a0: is_xmc_chip_strict at /home/vpatoka/esp/esp-idf-v6.1.0/components/bootloader_support/bootloader_flash/src/bootloader_flash.c:911
+entry 0x4084bba0
+--- 0x4084bba0: call_start_cpu0 at /home/vpatoka/esp/esp-idf-v6.1.0/components/bootloader/subproject/main/bootloader_start.c:27
+I (331) MSPI Timing: Enter flash timing tuning
+I (332) MSPI Timing: Enter psram timing tuning
+I (334) esp_psram: Found 8MB PSRAM device
+I (334) esp_psram: Speed: 80MHz
+I (335) cpu_start: Unicore app
+I (1485) esp_psram: SPI SRAM memory test OK
+I (1494) cpu_start: Pro cpu start user code
+I (1494) cpu_start: cpu freq: 240000000 Hz
+I (1494) app_init: Application information:
+I (1495) app_init: Project name:     vseismo
+I (1495) app_init: App version:      0.1.0
+I (1495) app_init: Compile time:     Nov 10 2026 11:09:12
+I (1495) app_init: ELF file SHA256:  1318500f4...
+I (1495) app_init: ESP-IDF:          v6.1
+I (1495) efuse_init: Min chip rev:     v1.0
+I (1496) efuse_init: Max chip rev:     v1.99 
+I (1496) efuse_init: Chip rev:         v1.2
+I (1496) heap_init: Initializing. RAM available for dynamic allocation:
+I (1497) heap_init: At 4082EC00 len 0002D9A0 (182 KiB): RAM
+I (1497) heap_init: At 4085C5A0 len 00002F58 (11 KiB): RAM
+I (1497) heap_init: At 50000024 len 00003FC4 (15 KiB): RTCRAM
+I (1497) esp_psram: Adding pool of 8192K of PSRAM memory to heap allocator
+I (1498) spi_flash: detected chip: generic
+I (1498) spi_flash: flash io: dio
+I (1499) sleep_gpio: Configure to isolate all GPIO pins in sleep state
+I (1499) sleep_gpio: Enable automatic switching of GPIO sleep configuration
+I (1500) esp_core_dump_flash: Init core dump to flash
+I (1500) esp_core_dump_flash: Found partition 'coredump' @ 620000 65536 bytes
+D (1501) esp_core_dump_flash: Blank core dump partition!
+W (1501) spi_flash: CPU frequency is set to 240MHz. esp_flash_write_encrypted() will automatically limit CPU frequency to 160MHz during execution.
+I (05:13:04.753) main_task: Started on CPU0
+I (05:13:04.754) main_task: Calling app_main()
+I (05:13:04.754) SEISMO: ==================================================
+I (05:13:04.754) SEISMO:   VSEISMO  vseismo v0.1.0  (Nov 10 2026 11:09:12)
+I (05:13:04.755) SEISMO:   ESP32-C5 rev v1.2, 1 core, IDF v6.1
+I (05:13:04.755) SEISMO:   Reset reason: software
+I (05:13:04.755) SEISMO:   VE3VPT
+I (05:13:04.755) SEISMO: ==================================================
+I (05:13:04.776) WEB: Config loaded: host=vseismo clk=ext osr=4096 decim=10 ref=none wifi=Celebright
+I (05:13:05.005) ACQ: Output ring: 131072 samples (3072 KB) in PSRAM
+I (05:13:05.007) ACQ: CLKIN from an external oscillator, 8192000 Hz nominal
+E (05:13:05.007) FAULT: Process fault raised: 0x8000 (mask 0x8000)
+I (05:13:05.008) TIME: No 1 Hz reference: sample rate is the nominal one
+I (05:13:05.010) pp: pp rom version: b025441
+I (05:13:05.011) net80211: net80211 rom version: b025441
+I (2015) wifi:wifi driver task: 408383c0, prio:23, stack:6656, core=0
+I (2026) wifi:wifi firmware version: e12a754
+I (2026) wifi:wifi certification version: v7.0
+I (2026) wifi:config NVS flash: enabled
+I (2026) wifi:config nano formatting: disabled
+I (2027) wifi:mac_version:HAL_MAC_ESP32AX_752MP_ECO2,ut_version:N, band mode:0x3
+I (2027) wifi:Init data frame dynamic rx buffer num: 32
+I (2027) wifi:Init static rx mgmt buffer num: 5
+I (2027) wifi:Init management short buffer num: 32
+I (2028) wifi:Init dynamic tx buffer num: 32
+I (2028) wifi:Init static tx FG buffer num: 2
+I (2028) wifi:Init static rx buffer size: 1700 (rxctrl:64, csi:512)
+I (2028) wifi:Init static rx buffer num: 10
+I (2028) wifi:Init dynamic rx buffer num: 32
+I (05:13:05.026) wifi_init: rx ba win: 6
+I (05:13:05.026) wifi_init: accept mbox: 6
+I (05:13:05.027) wifi_init: tcpip mbox: 32
+I (05:13:05.027) wifi_init: udp mbox: 6
+I (05:13:05.027) wifi_init: tcp mbox: 6
+I (05:13:05.027) wifi_init: tcp tx win: 5760
+I (05:13:05.027) wifi_init: tcp rx win: 5760
+I (05:13:05.027) wifi_init: tcp mss: 1440
+I (05:13:05.028) wifi_init: WiFi IRAM OP enabled
+I (05:13:05.028) wifi_init: WiFi RX IRAM OP enabled
+I (05:13:05.028) wifi_init: WiFi SLP IRAM OP enabled
+E (05:13:05.029) ADS: No ADS131M0x: ID read 0x0000 (check CLKIN, SPI wiring, 3.3 V)
+E (05:13:05.030) FAULT: Process fault raised: 0x0080 (mask 0x8080)
+--- WARNING: Writing to serial is timing out. Please make sure that your application supports an interactive console and that you have picked the correct console for serial communication.
+
+Type 'help' to get the list of commands.
+Use UP/DOWN arrows to navigate through command history.
+Press TAB when typing command name to auto-complete.
+
+Your terminal application does not support escape sequences.
+
+Line editing and history features are disabled.
+
+On Windows, try using Windows Terminal or Putty instead.
+vseismo>  [0I (05:13:05.591) CONSOLE: USB console ready: type "help"
+nI (05:13:05.594) phy_init: phy_version 109,edb400d6,Mar 10 2026,10:22:11
+I (3162) wifi:11ax coex: WDEVAX_PTI0(0x55777555), WDEVAX_PTI1(0x00003377).
+
+I (3163) wifi:mode : sta (10:bd:a3:df:13:28)
+I (3164) wifi:enable tsf
+I (3169) wifi:Set ps type: 0, coexist: 0
+
+I (05:13:06.166) SEISMO: WiFi station: SSID "Celebright", 2.4 + 5 GHz, retrying until connected
+I (3174) wifi:(he)max.RxAMPDULenExponentExtension:3, max.RxAMPDUpre-EOFpaddingBytes:8388607(0x7fffff)
+I (3175) wifi:(mac)omc_ul_mu_data_disable_rx:1
+I (3175) wifi:(phy)ppe_thresholds_present:1, nominal_packet_padding:0
+I (3175) wifi:(phy)dcm tx(constellation:0, nss:0), dcm rx(constellation:1, nss:0)
+I (3176) wifi:(phy)rx_mcs_map:0xffaa, tx_mcs_map:0xffaa, stbc_tx:0, bfmer(su:1, mu:1), ldpc:1, max_rate:172
+I (3176) wifi:(phy)nsts:4, ru_index_bitmap:0x3(242:1, 484:1, 996:0, 2*996:0)
+I (3177) wifi:(phy)threshold_bits:48, nsts_num:4, ru_num:2, he_cap->len:29, ppe_threshold_len:7(6,11,4)
+I (3177) wifi:(ppe)RU242, NSTS0, PPE16:0, PPE8:7, nominal_packet_padding:2
+I (3177) wifi:(opr)len:7, TWT Required:0, VHT Opr Info Present:0, 6GHz Opr Info Present:0, Co-Hosted BSS:0(max_indicator:0), Basic MCS and NSS:0xfffc
+I (3178) wifi:(opr)len:7, Default PE Duration:4, TXOP RTS Threshold:1023(0 us), ER-SU-Disable:0
+I (3179) wifi:(opr)len:7, BSS Color:14, disabled:0, Partial BSS Color:0
+I (3179) wifi:(spr)len:2, ctrl:0x3, PSR Disallowed:1, Non-SRG OBSS PD SR Disallowed:1
+I (3179) wifi:(spr)len:2, ctrl:0x3, Non-SRG Offset Present:0, SRG Info Present:0
+W (3180) wifi:(regdomain)len:6, country:CA, operating class:4, ngroup:1
+I (05:13:06.190) WEB: HTTP server on port 80
+I (05:13:06.190) main_task: Returned from app_main()
+I (05:13:10.060) ACQ: CLKIN from an external oscillator, 8192000 Hz nominal
+E (05:13:10.069) ADS: No ADS131M0x: ID read 0x0000 (check CLKIN, SPI wiring, 3.3 V)
+I (05:13:15.178) ACQ: CLKIN from an external oscillator, 8192000 Hz nominal
+E (05:13:15.187) ADS: No ADS131M0x: ID read 0x0000 (check CLKIN, SPI wiring, 3.3 V)
+I (14735) wifi:new:<6,0>, old:<1,0>, ap:<255,255>, sta:<6,0>, prof:1, snd_ch_cfg:0x0
+I (14737) wifi:(connect)dot11_authmode:0x3, pairwise_cipher:0x3, group_cipher:0x3
+I (14738) wifi:state: init -> auth (0xb0)
+I (14753) wifi:state: auth -> assoc (0x0)
+I (14775) wifi:(assoc)RESP, Extended Capabilities length:8, operating_mode_notification:1
+I (14776) wifi:(assoc)RESP, Extended Capabilities, MBSSID:0, TWT Responder:0, OBSS Narrow Bandwidth RU In OFDMA Tolerance:0
+I (14777) wifi:(he)max.RxAMPDULenExponentExtension:3, max.RxAMPDUpre-EOFpaddingBytes:8388607(0x7fffff)
+I (14777) wifi:(mac)omc_ul_mu_data_disable_rx:1
+I (14778) wifi:(phy)ppe_thresholds_present:1, nominal_packet_padding:0
+I (14778) wifi:(phy)dcm tx(constellation:0, nss:0), dcm rx(constellation:1, nss:0)
+I (14778) wifi:(phy)rx_mcs_map:0xffaa, tx_mcs_map:0xffaa, stbc_tx:0, bfmer(su:1, mu:1), ldpc:1, max_rate:172
+I (14779) wifi:(phy)nsts:4, ru_index_bitmap:0x3(242:1, 484:1, 996:0, 2*996:0)
+I (14779) wifi:(phy)threshold_bits:48, nsts_num:4, ru_num:2, he_cap->len:29, ppe_threshold_len:7(6,11,4)
+I (14780) wifi:(ppe)RU242, NSTS0, PPE16:0, PPE8:7, nominal_packet_padding:2
+I (14780) wifi:(opr)len:7, TWT Required:0, VHT Opr Info Present:0, 6GHz Opr Info Present:0, Co-Hosted BSS:0(max_indicator:0), Basic MCS and NSS:0xfffc
+I (14781) wifi:(opr)len:7, Default PE Duration:4, TXOP RTS Threshold:1023(0 us), ER-SU-Disable:0
+I (14781) wifi:(opr)len:7, BSS Color:14, disabled:0, Partial BSS Color:0
+I (14782) wifi:BSS max idle period:291(1000TU), protected keep alive:FALSE
+I (14782) wifi:state: assoc -> run (0x10)
+I (14783) wifi:(he)ppe_thresholds_present:1, nominal_packet_padding(rx:0, cfg:2)
+I (14783) wifi:(trc)phytype:CBW20-SGI, snr:43, maxRate:172, highestRateIdx:0
+W (14784) wifi:(trc)band:2G, phymode:3, highestRateIdx:0, lowestRateIdx:11, dataSchedTableSize:14
+I (14784) wifi:(trc)band:2G, rate(S-MCS7, rateIdx:0), ampdu(rate:S-MCS7, schedIdx(0, stop:8)), snr:43, ampduState:wait operational
+I (14785) wifi:ifidx:0, rssi:-52, nf:-95, phytype(0x3, CBW20-SGI), phymode(0x7, 11ax), max_rate:172, he:1, vht:0, ht:1
+I (14786) wifi:(ht)max.RxAMPDULenExponent:3(65535 bytes), MMSS:0(no restriction)
+I (14797) wifi:(extcap)mbssid:0, enhanced_mbssid_advertise:0, complete_nontxbssid_profiles:0, twt_responder: 0
+I (14798) wifi:connected with Celebright, aid = 3, channel 6, BW20(NONE, 00), bssid = be:f1:7e:a0:1a:8a
+I (14798) wifi:security: WPA2-PSK, phy: ax, rssi: -52, cipher(pairwise:0x3, group:0x3), pmf:0
+I (14800) wifi:pm start, type: 0, twt_start:0
+
+I (14801) wifi:pm start, type:0, aid:0x3, trans-BSSID:be:f1:7e:a0:1a:8a, BSSID[5]:0x8a, mbssid(max-indicator:0, index:0), he:1
+I (14802) wifi:set rx beacon pti, rx_bcn_pti: 10, bcn_timeout: 25000, mt_pti: 10, mt_time: 10000
+I (14802) wifi:[ADDBA]TX addba request, tid:0, dialogtoken:1, bufsize:32, A-MSDU:0(not supported), policy:1(IMR), ssn:0(0x0)
+I (14803) wifi:[ADDBA]TX addba request, tid:7, dialogtoken:2, bufsize:32, A-MSDU:0(not supported), policy:1(IMR), ssn:0(0x20)
+I (14804) wifi:[ADDBA]TX addba request, tid:5, dialogtoken:3, bufsize:32, A-MSDU:0(not supported), policy:1(IMR), ssn:0(0x0)
+I (14808) wifi:[ADDBA]RX addba response, status:0, tid:0/tb:1(0xa1), bufsize:32, batimeout:0, txa_wnd:32
+I (14809) wifi:[ADDBA]RX addba response, status:0, tid:7/tb:1(0xa1), bufsize:32, batimeout:0, txa_wnd:32
+I (14810) wifi:[ADDBA]RX addba response, status:0, tid:5/tb:1(0xa1), bufsize:32, batimeout:0, txa_wnd:32
+W (14817) wifi:<ba-add>idx:0, ifx:0, tid:1, TAHI:0x1008a1a, TALO:0xa07ef1be, (ssn:0, win:64, cur_ssn:0), CONF:0xc0001001
+I (14847) wifi:AP's beacon interval = 102400 us, DTIM period = 1
+W (15321) wifi:<ba-add>idx:1, ifx:0, tid:0, TAHI:0x1008a1a, TALO:0xa07ef1be, (ssn:0, win:64, cur_ssn:0), CONF:0xc0000001
+I (05:13:18.823) SEISMO: ==================================================
+I (05:13:18.823) SEISMO:   NETWORK SETTINGS
+I (05:13:18.824) SEISMO: --------------------------------------------------
+I (05:13:18.824) SEISMO:   WiFi      : Celebright (RSSI -53 dBm, channel 6, 2.4 GHz)
+I (05:13:18.825) SEISMO:   AP BSSID  : be:f1:7e:a0:1a:8a
+I (05:13:18.825) SEISMO:   Radio MAC : 10:bd:a3:df:13:28
+I (05:13:18.825) SEISMO:   Hostname  : vseismo
+I (05:13:18.825) SEISMO:   IP address: 10.10.10.111  gw 10.10.10.1
+I (05:13:18.826) SEISMO:   Open      : http://10.10.10.111
+I (05:13:18.826) SEISMO:   Web login : disabled (open)
+I (05:13:18.826) SEISMO:   Heap free : 5220 KB
+I (05:13:18.827) SEISMO: ==================================================
+I (05:13:18.828) TIME: SNTP started
+I (05:13:18.828) esp_netif_handlers: sta ip: 10.10.10.111, mask: 255.255.255.0, gw: 10.10.10.1
+I (05:13:19.009) SEISMO: IPv6 link-local address: fe80:0000:0000:0000:12bd:a3ff:fedf:1328
+W (16321) wifi:<ba-add>idx:2, ifx:0, tid:6, TAHI:0x1008a1a, TALO:0xa07ef1be, (ssn:2, win:64, cur_ssn:2), CONF:0xc0006001
+I (05:13:20.201) ACQ: CLKIN from an external oscillator, 8192000 Hz nominal
+E (05:13:20.210) ADS: No ADS131M0x: ID read 0x0000 (check CLKIN, SPI wiring, 3.3 V)
+I (05:13:20.587) FAULT: Process fault cleared: 0x8000 (mask 0x0080)
+I (05:13:20.587) TIME: SNTP sync #1 (clock was unset)
+I (05:13:25.653) ACQ: CLKIN from an external oscillator, 8192000 Hz nominal
+E (05:13:25.662) ADS: No ADS131M0x: ID read 0x0000 (check CLKIN, SPI wiring, 3.3 V)
+I (05:13:30.772) ACQ: CLKIN from an external oscillator, 8192000 Hz nominal
+E (05:13:30.781) ADS: No ADS131M0x: ID read 0x0000 (check CLKIN, SPI wiring, 3.3 V)
