@@ -60,6 +60,15 @@ static const char *TAG = "TIME";
 #define RATE_OUTLIER_SMP   0.5     /* off the fit by this many samples ... */
 #define RATE_OUTLIER_US    200.0   /* ... or this much time, whichever is larger */
 #define RATE_RESET_AFTER   5       /* consecutive outliers: the rate moved, restart */
+#define RATE_SPACING_RESET 5       /* misspaced edges in a row: the reference phase moved, restart */
+#define RATE_RESTART_LOG_US (60 * 1000000LL)   /* at most one restart warning a minute */
+
+/* RTC writes. Each write restarts the DS3231 countdown, and with it the SQW
+ * phase, so the RTC is written only when it needs it: the first SNTP sync of
+ * a boot, after OSF, and once a day to keep its phase near UTC (2 ppm is
+ * 0.17 s a day). */
+#define RTC_REWRITE_US     (24 * 3600 * 1000000LL)
+#define RTC_WRITE_LEAD_US  400     /* address, pointer and seconds bytes at 100 kHz */
 
 /* SNTP sample checks. Once synced, the system clock can only have drifted by
  * the ESP crystal error since the last good sample. A bigger correction is
@@ -80,7 +89,11 @@ static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 
 static tb_status_t s_st = { .time_src = "none", .ntp_age_s = -1, .ref_age_ms = -1, .rtc_model = "none" };
 static volatile tb_tq_t s_src_q = TB_TQ_NONE;   /* quality of the system-clock path */
-static volatile bool s_rtc_write_req;
+static volatile bool s_rtc_write_req;   /* an SNTP sync happened: consider an RTC write */
+static volatile bool s_rtc_write_due;   /* the second-boundary timer fired: write now */
+static esp_timer_handle_t s_rtc_timer;
+static int64_t s_rtc_last_write;        /* esp time of the last write, 0 = none this boot. Task only. */
+static int64_t s_rtc_write_t;           /* write that moved the SQW phase, 0 = handled. Task only. */
 
 /* Sample clock without pps: utc = esp + off(esp), with
  *   off(t) = s_off_us + s_off_rate * (t - s_off_t)
@@ -417,20 +430,46 @@ static void rtc_seed(void)
     ESP_LOGI(TAG, "System clock seeded from the RTC (holdover until SNTP)");
 }
 
-/* Write the RTC at a second boundary so its sub-second phase matches UTC. */
-static void rtc_write_from_system(void)
+static void rtc_timer_cb(void *arg)
+{
+    (void)arg;
+    s_rtc_write_due = true;
+    if (s_task) xTaskNotifyGive(s_task);
+}
+
+/* Arm a one-shot for just before the next second boundary. The task stays
+ * free in between; it used to sleep up to a second here. */
+static void rtc_schedule_write(void)
+{
+    if (!s_rtc_timer || esp_timer_is_active(s_rtc_timer)) return;
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    int64_t wait = 1000000 - (int64_t)tv.tv_usec - RTC_WRITE_LEAD_US;
+    if (wait < 1000) wait += 1000000;
+    esp_timer_start_once(s_rtc_timer, (uint64_t)wait);
+}
+
+/* Write the second that is about to start, so the seconds byte lands on the
+ * boundary and the RTC's sub-second phase matches UTC. */
+static void rtc_write_now(void)
 {
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    uint32_t wait_ms = (uint32_t)((1000000 - tv.tv_usec) / 1000);
-    vTaskDelay(pdMS_TO_TICKS(wait_ms ? wait_ms : 1));
+    const time_t sec = (time_t)(((int64_t)tv.tv_sec * 1000000 + tv.tv_usec + 500000) / 1000000);
+    esp_err_t err = ds323x_write_time(sec);
     gettimeofday(&tv, NULL);
-    time_t sec = tv.tv_sec + (tv.tv_usec > 500000 ? 1 : 0);
-    if (ds323x_write_time(sec) == ESP_OK) {
-        s_st.rtc_osf = false;
-        fault_clear(FAULT_RTC_LOST_POWER);
-        ESP_LOGI(TAG, "RTC set from SNTP");
+    const int64_t done = (int64_t)tv.tv_sec * 1000000 + tv.tv_usec;
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "RTC write failed: %s", esp_err_to_name(err));
+        return;                    /* the next SNTP sync tries again */
     }
+    s_rtc_last_write = esp_timer_get_time();
+    s_st.rtc_osf = false;
+    fault_clear(FAULT_RTC_LOST_POWER);
+    /* The write restarted the countdown: the SQW reference phase moved. */
+    if (s_st.ref == TB_REF_RTC) s_rtc_write_t = s_rtc_last_write;
+    ESP_LOGI(TAG, "RTC set from SNTP, second boundary error %+lld us",
+             (long long)(done - (int64_t)sec * 1000000));
 }
 
 static void rtc_poll(void)
@@ -469,6 +508,7 @@ static struct {
     bool     named;         /* utc_x0_s known */
     int64_t  utc_x0_s;      /* UTC second of the edge at x = 0 */
     int      name_bad;      /* consecutive edges whose SNTP name disagrees */
+    int      spacing_bad;   /* consecutive edges off the whole-second grid */
 } s_fit;
 
 #define NAME_REANCHOR_AFTER 3   /* edges in a row with another second name: re-anchor */
@@ -592,6 +632,16 @@ static void on_edge(int64_t t_edge)
     if (fs <= 0 || t_d == 0) { s_fit.active = false; s_fit.n = 0; rate_invalidate(); return; }
     double pos = (double)n + (double)(t_edge - t_d) * fs / 1e6;
 
+    /* An RTC write restarted the SQW countdown. Edges from before the write
+     * still belong to the old phase; the first one after it starts a new fit. */
+    if (s_rtc_write_t && t_edge > s_rtc_write_t) {
+        s_rtc_write_t = 0;
+        if (s_fit.active) ESP_LOGI(TAG, "RTC written: SQW phase moved, rate fit restarted");
+        fit_start(pos, t_edge, fs, epoch);
+        rate_invalidate();
+        return;
+    }
+
     if (!s_fit.active || epoch != s_fit.epoch || fs != s_fit.fs) {
         fit_start(pos, t_edge, fs, epoch);
         rate_invalidate();
@@ -601,9 +651,27 @@ static void on_edge(int64_t t_edge)
     int64_t dt = t_edge - s_fit.t_last;
     int64_t k = (dt + 500000) / 1000000;               /* reference seconds since the last edge */
     if (k < 1 || llabs(dt - k * 1000000) >= RATE_SPACING_US) {
-        ESP_LOGW(TAG, "Reference edge spacing %lld us: ignored", (long long)dt);
-        return;                                        /* a glitch: keep the last good edge */
+        /* One misspaced edge is a glitch: keep the last good edge. A run of
+         * them means the reference phase moved (an RTC write, a GPS re-lock).
+         * Rejected edges never advance t_last, so without a restart every
+         * later edge would be rejected too and the fit would stall. */
+        if (++s_fit.spacing_bad >= RATE_SPACING_RESET) {
+            static int64_t s_last_restart_log;
+            if (s_last_restart_log == 0 || t_edge - s_last_restart_log > RATE_RESTART_LOG_US) {
+                s_last_restart_log = t_edge;
+                ESP_LOGW(TAG, "%d reference edges in a row off the second grid: rate fit restarted",
+                         RATE_SPACING_RESET);
+            }
+            fit_start(pos, t_edge, fs, epoch);
+            rate_invalidate();
+        } else if (s_fit.spacing_bad == 1) {
+            ESP_LOGW(TAG, "Reference edge spacing %lld us: ignored", (long long)dt);
+        } else {
+            ESP_LOGD(TAG, "Reference edge spacing %lld us: ignored", (long long)dt);
+        }
+        return;
     }
+    s_fit.spacing_bad = 0;
     if (k > RATE_MAX_SKIP) {
         ESP_LOGW(TAG, "Reference gap of %lld s: rate fit restarted", (long long)k);
         fit_start(pos, t_edge, fs, epoch);
@@ -673,6 +741,12 @@ static void timebase_task(void *arg)
 
     for (;;) {
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
+        /* First, before the fit math: the boundary timer has a 400 us lead
+         * and the seconds byte must not miss the boundary. */
+        if (s_rtc_write_due) {
+            s_rtc_write_due = false;
+            if (ds323x_online()) rtc_write_now();
+        }
         int64_t now = esp_timer_get_time();
         offset_track();
 
@@ -689,7 +763,9 @@ static void timebase_task(void *arg)
         if (s_use_rtc) {
             if (s_rtc_write_req && ds323x_online()) {
                 s_rtc_write_req = false;
-                rtc_write_from_system();
+                if (s_rtc_last_write == 0 || s_st.rtc_osf || now - s_rtc_last_write > RTC_REWRITE_US) {
+                    rtc_schedule_write();
+                }
             }
             if (now - last_rtc_poll > (int64_t)RTC_POLL_S * 1000000) {
                 last_rtc_poll = now;
@@ -708,6 +784,8 @@ esp_err_t timebase_init(tb_ref_t ref, bool rising, bool use_rtc, i2c_master_bus_
     fault_raise(FAULT_NO_TIME);
 
     if (s_use_rtc) {
+        const esp_timer_create_args_t wr = { .callback = rtc_timer_cb, .name = "rtc_wr" };
+        if (esp_timer_create(&wr, &s_rtc_timer) != ESP_OK) s_rtc_timer = NULL;
         if (ds323x_init(bus) == ESP_OK && ds323x_configure() == ESP_OK) {
             s_st.rtc_online = true;
             s_st.rtc_model = ds323x_model_name();
