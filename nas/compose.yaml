@@ -1,0 +1,95 @@
+# vseismo on the NAS (QNAP Container Station). See README.md.
+#
+#   station --HTTP pull--> bridge --DataLink--> ringserver --SeedLink--> slink2dali
+#                                               (ring, SDS)               |
+#                                       LAN SeedLink :18000               | DataLink
+#                                                                         v
+#                                       autossh --SSH out--> relay ringserver (relay.example.org)
+#
+# Nothing here accepts connections from outside the LAN. The only ports
+# published are SeedLink and bridge metrics, on the NAS LAN address.
+
+name: vseismo
+
+x-common: &common
+  restart: unless-stopped
+  user: "10000:10000"
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+networks:
+  seismo:
+    ipam:
+      config:
+        - subnet: 172.30.78.0/24
+
+services:
+  ringserver:
+    <<: *common
+    image: earthscope/ringserver:4.5.6
+    command: ["/config/ring.conf"]
+    environment:
+      # The image defaults open every protocol on 18000; keep it SeedLink only.
+      RS_LISTEN_PORT: "18000 SeedLink"
+      RS_DATALINK_PORT: "16000"
+    volumes:
+      - ./ringserver/ring.conf:/config/ring.conf:ro
+      - ${DATA_ROOT}/ring:/data/ring
+      - ${DATA_ROOT}/sds:/data/sds
+    ports:
+      - "${LAN_ADDR}:18000:18000"
+    networks:
+      seismo: { ipv4_address: 172.30.78.2 }
+
+  bridge:
+    <<: *common
+    build: ./bridge
+    image: vseismo/bridge:local
+    env_file: .env
+    environment:
+      DL_HOST: ringserver
+      DL_PORT: "16000"
+    volumes:
+      - ${DATA_ROOT}/bridge:/data
+    ports:
+      - "${LAN_ADDR}:9108:9108"
+    stop_grace_period: 30s          # time to flush open records on SIGTERM
+    depends_on: [ringserver]
+    networks:
+      seismo: { ipv4_address: 172.30.78.10 }
+
+  autossh:
+    <<: *common
+    build: ./autossh
+    image: vseismo/autossh:local
+    environment:
+      RELAY_HOST: ${RELAY_HOST}
+      RELAY_USER: ${RELAY_USER}
+      RELAY_SSH_PORT: ${RELAY_SSH_PORT:-22}
+    volumes:
+      - ${DATA_ROOT}/ssh:/keys:ro
+    networks:
+      seismo: { ipv4_address: 172.30.78.20 }
+
+  slink2dali:
+    <<: *common
+    build: ./slink2dali
+    image: vseismo/slink2dali:local
+    command:
+      - "-v"
+      - "-nd"
+      - "10"
+      - "-k"
+      - "30"
+      - "-x"
+      - "/state/slink2dali.state:100"
+      - "-S"
+      - "${SEED_NET}_${SEED_STA}"
+      - "ringserver:18000"
+      - "autossh:16000"
+    volumes:
+      - ${DATA_ROOT}/slink2dali:/state
+    depends_on: [ringserver, autossh]
+    networks:
+      seismo: { ipv4_address: 172.30.78.21 }
