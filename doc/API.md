@@ -220,7 +220,7 @@ curl -d cmd=mux -d ch=0 -d mode=normal http://vseismo/api/acq/cmd
 curl -d cmd=sync http://vseismo/api/acq/cmd
 ```
 
-`mux` isn't saved. While a channel is off `normal`, `/api/acq` shows it and every output sample of that channel carries wave flag bit 4 (CH0) or 5 (CH1), so a recorder can mark or drop it. `zero` assumes the chip subtracts OCAL from each result, as the ADS131M02 datasheet describes. Confirm the sign once on the bench: after `zero`, the shorted-input mean should land near 0, not double.
+`sync`, `mux` and `zero` need running acquisition: while the ADC is missing they return `"ok":false` with `acquisition not running`. A `sync` or `mux` still queued when acquisition restarts is dropped. `mux` isn't saved. While a channel is off `normal`, `/api/acq` shows it and every output sample of that channel carries wave flag bit 4 (CH0) or 5 (CH1), so a recorder can mark or drop it. `zero` assumes the chip subtracts OCAL from each result, as the ADS131M02 datasheet describes. Confirm the sign once on the bench: after `zero`, the shorted-input mean should land near 0, not double.
 
 ## Backup and restore
 

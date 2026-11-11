@@ -934,7 +934,13 @@ static esp_err_t api_acq_cmd_handler(httpd_req_t *req)
     form_get(body, "mode", mode, sizeof(mode));
     int ch = chs[0] ? atoi(chs) : -1;
 
+    /* sync and mux are queued for the acquisition task, which only acts on
+     * them while it streams; refuse them instead of queueing them blind. */
+    acq_status_t now;
+    acq_get_status(&now);
+
     if (strcmp(cmd, "sync") == 0) {
+        if (!now.running) return send_json_err(req, "acquisition not running");
         acq_request_sync();
     } else if (strcmp(cmd, "restart") == 0) {
         acq_settings_t s;
@@ -947,6 +953,7 @@ static esp_err_t api_acq_cmd_handler(httpd_req_t *req)
         int m = -1;
         for (int i = 0; i < 4; i++) if (strcmp(mode, modes[i]) == 0) m = i;
         if (ch < 0 || ch >= ACQ_NCH || m < 0) return send_json_err(req, "mux needs ch=0|1 and mode=normal|short|testp|testn");
+        if (!now.running) return send_json_err(req, "acquisition not running");
         acq_request_mux((uint8_t)ch, (uint8_t)m);
     } else if (strcmp(cmd, "zero") == 0) {
         if (ch < 0 || ch >= ACQ_NCH) return send_json_err(req, "zero needs ch=0|1");

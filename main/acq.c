@@ -939,6 +939,11 @@ static bool reconfigure(void)
     memset(s_hold, 0, sizeof(s_hold));
     memset(s_taint, 0, sizeof(s_taint));
     memset(s_mux_now, 0, sizeof(s_mux_now));    /* ads_configure() put every channel on its input */
+    /* A mux or SYNC queued before the restart (or while the ADC was
+     * missing) is dropped: it would otherwise act whenever the ADC next
+     * answers, possibly hours later. */
+    s_mux_ch = -1;
+    s_sync_req = false;
     s_skip_in = 0;
     s_mute_out = (uint32_t)s_taps + ADS_SINC3_SETTLE;
     s_bits_seen = false;

@@ -232,6 +232,12 @@ static int cmd_loglevel(int argc, char **argv)
 static int cmd_sync(int argc, char **argv)
 {
     (void)argc; (void)argv;
+    acq_status_t a;
+    acq_get_status(&a);
+    if (!a.running) {
+        printf("acquisition not running: no SYNC sent\n");
+        return 1;
+    }
     acq_request_sync();
     printf("SYNC pulse requested\n");
     return 0;
