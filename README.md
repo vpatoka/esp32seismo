@@ -123,6 +123,7 @@ ESP32-C5-DevKitC-1-N8R8: single-core RISC-V, 8 MB flash, 8 MB PSRAM.
 
 - Never touched: 13/14 (USB JTAG), 15 (PSRAM CS) and 16 to 22 (flash and PSRAM).
 - GPIO 11/12 (UART0, the DevKit's second USB port) are kept for the WinSDR stream.
+- DS3231 SQW: on the common breakout modules SQW sits right next to 32K. Wired to the wrong pin, the log says `No SQW edge on GPIO23 5 s after start`. `ref=rtc` drives the DS3231 even with `rtc=0`, since its SQW only runs once configured.
 - The map follows the esp32nixie pin audit. Check it against the DevKitC-1 pinout before the first power-up.
 
 ### ADC 15 Click Changes

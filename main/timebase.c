@@ -51,6 +51,9 @@
 static const char *TAG = "TIME";
 
 #define REF_LOST_MS        3000
+#define REF_FIRST_RTC_US   (5 * 1000000LL)     /* no SQW edge this long after start: warn */
+#define REF_FIRST_GPS_US   (120 * 1000000LL)   /* a cold GPS may take a minute or two to fix */
+#define REF_MIN_GAP_US     900000              /* edges closer than this are glitches, dropped in the ISR */
 #define RTC_POLL_S         60
 
 #define RATE_WIN           300     /* reference edges in the fit window */
@@ -144,6 +147,12 @@ static bool s_use_rtc;
 /* A reference edge at esp_timer time t. ISR context, from either path. */
 static void IRAM_ATTR ref_edge(int64_t t)
 {
+    /* Glitch gate. A floating or miswired input (the 32 kHz pin of an
+     * unconfigured DS3231) would otherwise wake the task tens of thousands
+     * of times a second on a single core, next to acquisition. A glitch
+     * just before a real edge can hide it; the fit bridges a missed edge. */
+    const int64_t last = s_edge_t;
+    if (last && t - last < REF_MIN_GAP_US) return;
     s_edge_t = t;
     BaseType_t woken = pdFALSE;
     if (s_task) vTaskNotifyGiveFromISR(s_task, &woken);
@@ -798,6 +807,8 @@ static void timebase_task(void *arg)
     (void)arg;
     int64_t last_rtc_poll = 0;
     int64_t last_edge_seen = 0;
+    const int64_t started = esp_timer_get_time();
+    bool ref_warned = false;
 
     for (;;) {
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
@@ -814,6 +825,21 @@ static void timebase_task(void *arg)
         if (s_st.ref != TB_REF_NONE && e && e != last_edge_seen) {
             last_edge_seen = e;
             on_edge(e);
+        }
+        /* FAULT_REF_LOST covers a reference that stops. One that never
+         * starts (a miswired pin, no GPS fix) would otherwise be silent. */
+        if (!ref_warned && s_st.ref != TB_REF_NONE && !s_st.ref_seen) {
+            const bool rtc = s_st.ref == TB_REF_RTC;
+            if (now - started > (rtc ? REF_FIRST_RTC_US : REF_FIRST_GPS_US)) {
+                ref_warned = true;
+                if (rtc) {
+                    ESP_LOGW(TAG, "No SQW edge on GPIO%d %lld s after start: check the INT/SQW wire "
+                             "(32K is the pin next to it)", (int)REF_1HZ_GPIO, REF_FIRST_RTC_US / 1000000);
+                } else {
+                    ESP_LOGW(TAG, "No GPS PPS on GPIO%d %lld s after start: no fix yet, or check the PPS wire",
+                             (int)REF_1HZ_GPIO, REF_FIRST_GPS_US / 1000000);
+                }
+            }
         }
         if (s_st.ref_seen && now - last_edge_seen > (int64_t)REF_LOST_MS * 1000) {
             fault_raise(FAULT_REF_LOST);

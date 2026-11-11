@@ -257,7 +257,9 @@ esp_err_t ds323x_init(i2c_master_bus_handle_t bus)
         s_model = DS323X_DS3231;
         ESP_LOGW(TAG, "RTC identification inconclusive, treating as DS3231");
     }
-    ESP_LOGI(TAG, "RTC found: %s", ds323x_model_name());
+    ESP_LOGI(TAG, "RTC found: %s at 0x%02X (I2C SDA %d, SCL %d, %d kHz)",
+             ds323x_model_name(), DS323X_I2C_ADDR, (int)I2C_SDA_GPIO, (int)I2C_SCL_GPIO,
+             I2C_BUS_HZ / 1000);
     return ESP_OK;
 }
 
@@ -297,6 +299,17 @@ esp_err_t ds323x_configure(void)
     /* EN32kHz off, alarm flags cleared, OSF left as found. */
     ESP_RETURN_ON_ERROR(modify_reg(REG_STATUS, STAT_EN32K | STAT_A2F | STAT_A1F, 0),
                         TAG, "clear STATUS flags");
+
+    /* Read back, so the log shows what the chip holds, not what we sent.
+     * CONV self-clears when a conversion ends; leave it out of the check. */
+    uint8_t cs[2];
+    ESP_RETURN_ON_ERROR(read_regs(REG_CTRL, cs, sizeof(cs)), TAG, "read back CTRL/STATUS");
+    if ((cs[0] & (uint8_t)~CTRL_CONV) != 0x00) {
+        ESP_LOGW(TAG, "CTRL reads 0x%02X after writing 0x00: SQW will not run", cs[0]);
+    } else {
+        ESP_LOGI(TAG, "RTC configured: CTRL 0x%02X (1 Hz on SQW, 32 kHz off), STATUS 0x%02X (OSF %d)",
+                 cs[0], cs[1], (cs[1] & STAT_OSF) ? 1 : 0);
+    }
     return ESP_OK;
 }
 

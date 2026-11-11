@@ -577,8 +577,13 @@ void app_main(void)
     config_to_acq(&g_config, &as);
     if (acq_start(&as, (acq_capture_t)g_config.capture) != ESP_OK) fault_raise(FAULT_INIT_TASK);
 
-    i2c_master_bus_handle_t bus = g_config.rtc ? i2c_bus_init() : NULL;
-    if (timebase_init((tb_ref_t)g_config.ref, g_config.ref_rising, g_config.rtc, bus) != ESP_OK) {
+    /* The SQW only runs once the DS323x is configured (power-on CTRL has
+     * INTCN set), so an SQW reference implies the RTC. The stored setting
+     * stays as it is. */
+    const bool use_rtc = g_config.rtc || g_config.ref == TB_REF_RTC;
+    if (use_rtc && !g_config.rtc) ESP_LOGI(TAG, "ref=rtc: driving the DS323x for its SQW, as if rtc=1");
+    i2c_master_bus_handle_t bus = use_rtc ? i2c_bus_init() : NULL;
+    if (timebase_init((tb_ref_t)g_config.ref, g_config.ref_rising, use_rtc, bus) != ESP_OK) {
         fault_raise(FAULT_INIT_TASK);
     }
 

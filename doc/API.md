@@ -155,7 +155,7 @@ curl 'http://vseismo/api/wave?since=118000&max=1000&order=oldest'
 | `taps` | 0 (auto = 20 x decim + 1) or odd 3..255 | Restarts acquisition |
 | `ref` | `none`, `gps`, `rtc` | Reboot |
 | `ref_edge` | `rise`, `fall` | Reboot |
-| `rtc` | 0, 1 | Reboot |
+| `rtc` | 0, 1 | Reboot. Implied by `ref=rtc`: the SQW only runs once the DS323x is configured, so with `ref=rtc` the RTC is driven (and `/api/status` `rtc.enabled` is `true`) whatever this value says. |
 | `capture` | `isr` (default), `mcpwm` | Reboot. How DRDY and 1 Hz reference edges are timed. `isr`: a GPIO interrupt reads esp_timer, about 10 µs of jitter under WiFi load. `mcpwm`: one MCPWM capture timer latches both edges in hardware at 6.25 ns, kept as µs (0.3 µs rms rounding). If the capture timer can't be set up, the station falls back to `isr`; `/api/acq` `capture` shows what is in use. |
 | `chN_name` | 1-7 characters | Immediate |
 | `chN_pga` | 1, 2, 4 .. 128 | Restarts acquisition |
