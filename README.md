@@ -156,6 +156,10 @@ The [carrier board](hardware/carrier/README.md) holds the DevKit, the ADC 15 Cli
 
 SNTP sets the system clock hourly from four servers, in immediate mode, so log times are exact. An optional DS3231 seeds it at boot and holds it between syncs. Sample timestamps don't follow the system clock's steps; see below.
 
+Every SNTP reply is checked before it touches the clock. Times outside build date minus a day to 2106 are rejected. Once synced, a reply that would move the clock by more than 200 ms plus 50 ppm drift since the last sync is held, re-polled after 30 s, and applied only if the next one agrees within 100 ms. On a congested uplink one reply can sit in a queue for most of a second; without the check it would shift the timestamps and rename the PPS seconds. `time.ntp_rejected` in `/api/status` counts what was held or rejected.
+
+The DS3231 is written at a second boundary only when it needs it: the first SNTP sync after boot, after its oscillator-stop flag, and once a day. Each write restarts its countdown and moves the SQW phase, so with the SQW as the rate reference the fit restarts once after a write.
+
 ### Rate Measurement
 
 A 1 Hz edge on GPIO23 (GPS PPS or DS3231 SQW) is compared against the ADC sample count. At each edge the firmware interpolates the fractional sample position, then fits a straight line through the last 300 positions. The slope is the true sample rate, whatever drives CLKIN; the same fit gives the ESP32 crystal error.

@@ -378,7 +378,8 @@ The window is a trade-off. 300 s averages jitter well, but follows oscillator te
 
 ### 7.4 Robustness
 
-- Spacing: an edge that is not a whole number of seconds (±20 ms) after the last good edge is ignored as a glitch.
+- Spacing: an edge that is not a whole number of seconds (±20 ms) after the last good edge is ignored as a glitch. Five in a row mean the reference phase moved (an RTC write, a GPS re-lock), and the fit restarts. Ignored edges never move the last good edge, so without that restart every later edge would be ignored too.
+- RTC writes: each write restarts the DS3231 countdown and moves the SQW phase. With the SQW as reference the fit restarts on the first edge after a write. Writes are rare on purpose: the first SNTP sync after boot, after OSF, and once a day (2 ppm is 0.17 s a day).
 - Outliers: an edge whose position is more than max(0.5 samples, 200 µs) off the fitted line is dropped and counted. Five in a row mean the rate itself moved, and the fit restarts.
 - Gaps up to 30 s are bridged by the second count. A longer gap restarts the fit.
 - Any acquisition restart, big gap or SYNC changes the timing epoch, and positions from different epochs are never mixed.
@@ -423,7 +424,7 @@ Properties:
 $$ \sigma_\text{end}^2 = \sigma_p^2 \left( \frac{1}{N} + \frac{(N/2)^2}{S_{xx}} \right) \approx \frac{4\sigma_p^2}{N}, \qquad \sigma_\text{end} = \frac{2\sigma_p}{\sqrt N} $$
 
 which is 1.63 µs for 10 µs stamp jitter and $N$ = 300.
-- Naming errors: a single edge whose rounded name disagrees is ignored. Three in a row move the anchor and are counted. That is the expected behaviour at a leap second, or at the first SNTP sync after an RTC seed that was seconds off.
+- Naming errors: a single edge whose rounded name disagrees is ignored. Three in a row move the anchor and are counted. That is the expected behaviour at a leap second, or at the first SNTP sync after an RTC seed that was seconds off. Only a clock with an SNTP sync in the last 2 h may move the anchor; after a longer outage the crystal-driven system clock could be off by more than half a second, and the edge count keeps the names.
 - Holdover: the model is used for 30 s after the last good edge. Over that time the frequency error of the fit adds $\sigma_b \cdot 30$ s, a fraction of a µs.
 
 ### 8.3 Slewed sample clock (no PPS)
@@ -443,6 +444,20 @@ $$ r = \text{clamp}\left( \frac{\text{off}^* - \text{off}(t)}{H}, \pm 500\ \text
 IDF's own smooth SNTP mode is not used. It slews at 1/64, which is 15 625 ppm, and would squeeze a 5 ms correction into 0.3 s of samples.
 
 The system clock itself keeps immediate SNTP, so log times stay exact.
+
+### 8.3.1 SNTP sample checks
+
+The firmware replaces IDF's `sntp_sync_time()`, which would apply every reply. A reply is checked first:
+
+- Plausible window: build date minus one day to 2106-02-07 (the end of lwIP's 32-bit NTP seconds).
+- The first accepted sample of a boot is applied as is: an RTC seed can be up to a second off.
+- After that, the system clock can only have drifted by the ESP crystal error since the last good sample. A correction $|\Delta|$ larger than
+
+$$ 200\ \text{ms} + 50\ \text{ppm} \cdot (t - t_\text{last}) $$
+
+  is held, the server is re-polled after 30 s, and the held value is applied only when the next sample is within 100 ms of it.
+
+A single SNTP reply has no round-trip correction in stock lwIP, so its error is the time it spent in the network. On a congested uplink that reached 0.83 s on the bench (mtr showed 275 ms average and 1.48 s worst RTT past the ISP edge). Applied, that would move `ntp` timestamps by 0.83 s and, being over 0.5 s, rename the PPS seconds.
 
 ### 8.4 Steering by PPS and handover
 
