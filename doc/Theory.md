@@ -397,7 +397,7 @@ Every output sample is timestamped by one of two models, and carries the name of
 |---|---|---|
 | `pps` | GPS PPS present, rate fit valid | Sample-count model, section 8.2 |
 | `ntp` | SNTP time, no usable PPS | Slewed sample clock, section 8.3 |
-| `rtc` | DS3231-seeded time, no SNTP yet | Slewed sample clock |
+| `rtc` | DS3231-seeded time (set at its seconds rollover), no SNTP yet | Slewed sample clock |
 | `none` | No wall-clock time | No UTC |
 
 A DS3231 SQW reference measures the rate only. Its edges are aligned to the RTC's own seconds, which were set from SNTP and drift at ±2 ppm, so they are not UTC seconds and never select the `pps` model.
@@ -424,7 +424,7 @@ Properties:
 $$ \sigma_\text{end}^2 = \sigma_p^2 \left( \frac{1}{N} + \frac{(N/2)^2}{S_{xx}} \right) \approx \frac{4\sigma_p^2}{N}, \qquad \sigma_\text{end} = \frac{2\sigma_p}{\sqrt N} $$
 
 which is 1.63 µs for 10 µs stamp jitter and $N$ = 300.
-- Naming errors: a single edge whose rounded name disagrees is ignored. Three in a row move the anchor and are counted. That is the expected behaviour at a leap second, or at the first SNTP sync after an RTC seed that was seconds off. Only a clock with an SNTP sync in the last 2 h may move the anchor; after a longer outage the crystal-driven system clock could be off by more than half a second, and the edge count keeps the names.
+- Naming errors: a single edge whose rounded name disagrees is ignored. Three in a row move the anchor and are counted. That is the expected behaviour at a leap second, or at the first SNTP sync after an RTC seed that was seconds off. Only a clock with an SNTP sync in the last 2 h may move the anchor; after a longer outage the crystal-driven system clock could be off by more than half a second, and the edge count keeps the names. Without network at boot, the names come from the RTC seed. That seed is set at the RTC's seconds rollover (the seconds register is polled every 2 ms until it changes, at most 1.5 s), so it is about a millisecond off and the rounding is safe. A plain whole-second seed would land 0 to 1 s behind and name every PPS second one early whenever it landed past the half second.
 - Holdover: the model is used for 30 s after the last good edge. Over that time the frequency error of the fit adds $\sigma_b \cdot 30$ s, a fraction of a µs.
 
 ### 8.3 Slewed sample clock (no PPS)

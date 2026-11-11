@@ -98,6 +98,16 @@ static esp_timer_handle_t s_rtc_timer;
 static int64_t s_rtc_last_write;        /* esp time of the last write, 0 = none this boot. Task only. */
 static int64_t s_rtc_write_t;           /* write that moved the SQW phase, 0 = handled. Task only. */
 
+/* Boot seed at the RTC seconds rollover. Task only, except s_seed_tick. */
+#define SEED_POLL_US       2000
+#define SEED_TIMEOUT_US    1500000
+static esp_timer_handle_t s_seed_timer;
+static volatile bool s_seed_tick;
+static bool    s_seed_active;
+static time_t  s_seed_utc;              /* RTC time read at the start */
+static uint8_t s_seed_sec;              /* its seconds register */
+static int64_t s_seed_t0, s_seed_t_last;
+
 /* Sample clock without pps: utc = esp + off(esp), with
  *   off(t) = s_off_us + s_off_rate * (t - s_off_t)
  * a continuous piecewise-linear offset. Each tracking pass re-bases it at
@@ -476,19 +486,17 @@ void timebase_start_sntp(void)
 
 /* ── RTC ────────────────────────────────────────────────────────────────── */
 
-static void rtc_seed(void)
+/* Seed from the RTC at its seconds rollover. The registers only hold whole
+ * seconds, so a plain seed lands 0 to 1 s behind. That makes rtc-quality
+ * samples late and, with GPS and no network, can name every PPS second one
+ * early. Instead, poll the seconds register every SEED_POLL_US (one byte,
+ * about 0.4 ms at 100 kHz) until it changes, and set the clock from that
+ * edge: within about a millisecond. time_valid waits for it, at most
+ * SEED_TIMEOUT_US. */
+static void seed_apply(int64_t utc_us, bool aligned)
 {
-    time_t utc;
-    bool osf = true;
-    if (ds323x_read_time(&utc, &osf) != ESP_OK) return;
-    s_st.rtc_osf = osf;
-    if (osf) {
-        fault_raise(FAULT_RTC_LOST_POWER);
-        ESP_LOGW(TAG, "RTC oscillator stopped at some point: not seeding the clock");
-        return;
-    }
-    if (s_st.time_valid) return;
-    struct timeval tv = { .tv_sec = utc, .tv_usec = 0 };
+    if (s_st.time_valid) return;            /* SNTP got there first */
+    struct timeval tv = { .tv_sec = (time_t)(utc_us / 1000000), .tv_usec = (suseconds_t)(utc_us % 1000000) };
     settimeofday(&tv, NULL);
     portENTER_CRITICAL(&s_mux);
     s_st.time_valid = true;
@@ -496,7 +504,73 @@ static void rtc_seed(void)
     s_src_q = TB_TQ_RTC;
     portEXIT_CRITICAL(&s_mux);
     fault_clear(FAULT_NO_TIME);
-    ESP_LOGI(TAG, "System clock seeded from the RTC (holdover until SNTP)");
+    if (aligned) ESP_LOGI(TAG, "System clock seeded from the RTC at its seconds rollover (holdover until SNTP)");
+    else ESP_LOGW(TAG, "RTC rollover not seen: seeded to the whole second (up to 1 s late)");
+}
+
+static void seed_timer_cb(void *arg)
+{
+    (void)arg;
+    s_seed_tick = true;
+    if (s_task) xTaskNotifyGive(s_task);
+}
+
+static void seed_stop(void)
+{
+    if (s_seed_timer) esp_timer_stop(s_seed_timer);
+    s_seed_active = false;
+}
+
+/* At boot: read and check the RTC, then start polling for the rollover. */
+static void rtc_seed_begin(void)
+{
+    time_t utc;
+    bool osf = true;
+    if (ds323x_read_time(&utc, &osf) != ESP_OK) return;
+    const int64_t t_read = esp_timer_get_time();
+    s_st.rtc_osf = osf;
+    if (osf) {
+        fault_raise(FAULT_RTC_LOST_POWER);
+        ESP_LOGW(TAG, "RTC oscillator stopped at some point: not seeding the clock");
+        return;
+    }
+    if (utc < NTP_MIN_EPOCH) {
+        ESP_LOGW(TAG, "RTC time %lld predates this build: ignored", (long long)utc);
+        return;
+    }
+    if (s_st.time_valid) return;
+    s_seed_utc = utc;
+    s_seed_sec = (uint8_t)(utc % 60);
+    s_seed_t0 = t_read;
+    s_seed_t_last = t_read;
+    if (!s_seed_timer || esp_timer_start_periodic(s_seed_timer, SEED_POLL_US) != ESP_OK) {
+        seed_apply((int64_t)utc * 1000000, false);
+        return;
+    }
+    s_seed_active = true;
+}
+
+/* One poll, in the task (it owns the bus). */
+static void seed_poll(void)
+{
+    if (s_st.time_valid) { seed_stop(); return; }   /* SNTP first: nothing to do */
+    const int64_t t_start = esp_timer_get_time();
+    uint8_t s;
+    const bool ok = ds323x_online() && ds323x_read_seconds(&s) == ESP_OK;
+    const int64_t t_end = esp_timer_get_time();
+    if (ok && s != s_seed_sec) {
+        /* The register changed between the last read and this one. */
+        const int64_t t_roll = (s_seed_t_last + t_start) / 2;
+        seed_stop();
+        seed_apply(((int64_t)s_seed_utc + 1) * 1000000 + (esp_timer_get_time() - t_roll), true);
+        return;
+    }
+    if (!ok || t_end - s_seed_t0 > SEED_TIMEOUT_US) {
+        seed_stop();
+        seed_apply((int64_t)s_seed_utc * 1000000 + (esp_timer_get_time() - s_seed_t0), false);
+        return;
+    }
+    s_seed_t_last = t_end;
 }
 
 static void rtc_timer_cb(void *arg)
@@ -818,6 +892,10 @@ static void timebase_task(void *arg)
             s_rtc_write_due = false;
             if (ds323x_online()) rtc_write_now();
         }
+        if (s_seed_tick) {
+            s_seed_tick = false;
+            if (s_seed_active) seed_poll();
+        }
         int64_t now = esp_timer_get_time();
         offset_track();
 
@@ -872,10 +950,12 @@ esp_err_t timebase_init(tb_ref_t ref, bool rising, bool use_rtc, i2c_master_bus_
     if (s_use_rtc) {
         const esp_timer_create_args_t wr = { .callback = rtc_timer_cb, .name = "rtc_wr" };
         if (esp_timer_create(&wr, &s_rtc_timer) != ESP_OK) s_rtc_timer = NULL;
+        const esp_timer_create_args_t sd = { .callback = seed_timer_cb, .name = "rtc_seed" };
+        if (esp_timer_create(&sd, &s_seed_timer) != ESP_OK) s_seed_timer = NULL;
         if (ds323x_init(bus) == ESP_OK && ds323x_configure() == ESP_OK) {
             s_st.rtc_online = true;
             s_st.rtc_model = ds323x_model_name();
-            rtc_seed();
+            rtc_seed_begin();          /* the task finishes it at the seconds rollover */
         } else {
             fault_raise(FAULT_RTC_MISSING);
         }

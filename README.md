@@ -123,7 +123,7 @@ ESP32-C5-DevKitC-1-N8R8: single-core RISC-V, 8 MB flash, 8 MB PSRAM.
 
 - Never touched: 13/14 (USB JTAG), 15 (PSRAM CS) and 16 to 22 (flash and PSRAM).
 - GPIO 11/12 (UART0, the DevKit's second USB port) are kept for the WinSDR stream.
-- DS3231 SQW: on the common breakout modules SQW sits right next to 32K. Wired to the wrong pin, the log says `No SQW edge on GPIO23 5 s after start`. `ref=rtc` drives the DS3231 even with `rtc=0`, since its SQW only runs once configured.
+- DS3231 SQW: on the common breakout modules SQW sits right next to 32K. Wired to the wrong pin, the log says `No SQW edge on GPIO23 5 s after start`. `ref=rtc` drives the DS3231 even with `rtc=0`, since its SQW only runs once configured. The DS3231's seconds roll over on the falling SQW edge; the rate fit works on either edge, so `ref_edge` only matters when comparing phases on a scope.
 - The map follows the esp32nixie pin audit. Check it against the DevKitC-1 pinout before the first power-up.
 
 ### ADC 15 Click Changes
@@ -179,7 +179,7 @@ An output sample stands for an input-sample position: the count at its newest in
 |---|---|---|---|
 | `pps` | GPS PPS and a valid rate fit | Position on the fitted line through the PPS edges. The PPS edge defines the second, SNTP only names it (to the nearest second). | µs |
 | `ntp` | SNTP, no usable PPS | DRDY time through a sample clock that follows the system clock but changes rate by at most 500 ppm | ms, never steps |
-| `rtc` | DS3231 seed, no SNTP yet | Same, from the RTC-seeded clock | seconds |
+| `rtc` | DS3231 seed, no SNTP yet | Same, from the RTC-seeded clock, set at the RTC's seconds rollover | about 1 ms at boot, then RTC drift (2 ppm, 0.17 s a day) |
 | `none` | No wall-clock time | Samples carry no UTC | |
 
 - **No steps:** an SNTP correction of 10 ms is slewed into the sample clock over 20 s. Only a change over 0.5 s (a leap second, a bad RTC seed) is applied at once.
