@@ -66,6 +66,7 @@ typedef struct {
     double   slew_ms;         /* system clock minus sample clock, still being slewed in */
     uint32_t pps_naming_errors;  /* times the SNTP second name of PPS edges was re-anchored */
     uint32_t ntp_syncs;
+    uint32_t ntp_rejected;    /* SNTP samples held for confirmation or implausible */
     int64_t  ntp_age_s;       /* -1 = never */
 
     tb_ref_t ref;

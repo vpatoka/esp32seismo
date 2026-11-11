@@ -701,7 +701,7 @@ static esp_err_t api_status_handler(httpd_req_t *req)
         "{\"ok\":true,\"api\":%d,"
         "\"fw\":\"%s\",\"idf\":\"%s\",\"uptime\":%lld,\"heap\":%lu,\"heap_min\":%lu,"
         "\"station\":\"%s\",\"network\":\"%s\",\"utc_ms\":%lld,"
-        "\"time\":{\"valid\":%s,\"src\":\"%s\",\"ntp_syncs\":%lu,\"ntp_age\":%lld,"
+        "\"time\":{\"valid\":%s,\"src\":\"%s\",\"ntp_syncs\":%lu,\"ntp_age\":%lld,\"ntp_rejected\":%lu,"
         "\"quality\":\"%s\",\"slew_ms\":%.3f,\"pps_naming_errors\":%lu},"
         "\"ref\":{\"type\":\"%s\",\"edge\":\"%s\",\"seen\":%s,\"edges\":%lu,\"age_ms\":%lld,"
         "\"rate_valid\":%s,\"fs\":%s,\"adc_ppm\":%s,\"esp_ppm\":%s,"
@@ -715,6 +715,7 @@ static esp_err_t api_status_handler(httpd_req_t *req)
         (unsigned long)esp_get_free_heap_size(), (unsigned long)esp_get_minimum_free_heap_size(),
         g_config.station, g_config.network, (long long)(utc_us / 1000),
         tb.time_valid ? "true" : "false", tb.time_src, (unsigned long)tb.ntp_syncs, (long long)tb.ntp_age_s,
+        (unsigned long)tb.ntp_rejected,
         timebase_tq_name(tb.quality), tb.slew_ms, (unsigned long)tb.pps_naming_errors,
         timebase_ref_name(tb.ref), tb.ref_rising ? "rise" : "fall", tb.ref_seen ? "true" : "false",
         (unsigned long)tb.ref_edges, (long long)tb.ref_age_ms,

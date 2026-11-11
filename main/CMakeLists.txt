@@ -37,3 +37,9 @@ idf_component_register(
         esp_app_format
         console
 )
+
+# Build time as a Unix epoch. SNTP times older than this (minus a day) are
+# rejected as implausible. Evaluated at CMake configure time, which is close
+# enough: the guard only has to catch 1970/2000 garbage.
+string(TIMESTAMP SEISMO_BUILD_EPOCH "%s" UTC)
+target_compile_definitions(${COMPONENT_LIB} PRIVATE SEISMO_BUILD_EPOCH=${SEISMO_BUILD_EPOCH}LL)

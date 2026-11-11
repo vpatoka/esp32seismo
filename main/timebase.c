@@ -42,6 +42,7 @@
 #include <sys/time.h>
 #include "esp_log.h"
 #include "esp_netif_sntp.h"
+#include "esp_sntp.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -59,6 +60,19 @@ static const char *TAG = "TIME";
 #define RATE_OUTLIER_SMP   0.5     /* off the fit by this many samples ... */
 #define RATE_OUTLIER_US    200.0   /* ... or this much time, whichever is larger */
 #define RATE_RESET_AFTER   5       /* consecutive outliers: the rate moved, restart */
+
+/* SNTP sample checks. Once synced, the system clock can only have drifted by
+ * the ESP crystal error since the last good sample. A bigger correction is
+ * far more likely a reply that sat in an ISP queue, so it waits for a second
+ * sample that agrees. */
+#define NTP_MIN_EPOCH       ((time_t)(SEISMO_BUILD_EPOCH - 86400))
+#define NTP_MAX_EPOCH       ((time_t)4294967295LL)   /* end of lwIP's NTP seconds, 2106 */
+#define NTP_HOLD_US         200000  /* corrections above this (plus drift) are held ... */
+#define NTP_HOLD_US_PER_S   50      /* ... drift allowance: 50 ppm since the last good sample */
+#define NTP_AGREE_US        100000  /* a held sample is confirmed by one within this */
+#define NTP_CAND_MAX_AGE_US (15 * 60 * 1000000LL)
+#define NTP_REPOLL_S        30
+#define NTP_FRESH_US        (2 * 3600 * 1000000LL)   /* SNTP this recent may rename PPS seconds */
 
 static TaskHandle_t s_task;
 static volatile int64_t s_edge_t;
@@ -108,6 +122,10 @@ static struct {
 } s_model;
 static volatile int64_t s_ntp_last_us;
 static bool s_sntp_started;
+static esp_timer_handle_t s_repoll_timer;
+/* Held SNTP sample, tcpip thread only */
+static bool    s_cand_valid;
+static int64_t s_cand_delta_us, s_cand_t;
 static bool s_use_rtc;
 
 /* A reference edge at esp_timer time t. ISR context, from either path. */
@@ -210,7 +228,7 @@ static void offset_track(void)
     s_off_rate = rate;
     s_st.slew_ms = (double)d / 1000.0;
     portEXIT_CRITICAL(&s_mux);
-    if (stepped) ESP_LOGW(TAG, "System clock moved by more than %d s: sample clock stepped", TB_STEP_US / 1000000);
+    if (stepped) ESP_LOGW(TAG, "System clock moved by more than %d ms: sample clock stepped", TB_STEP_US / 1000);
 }
 
 int64_t timebase_esp_to_utc_us(int64_t t_esp)
@@ -268,30 +286,107 @@ void timebase_get_status(tb_status_t *out)
 
 /* ── SNTP ───────────────────────────────────────────────────────────────── */
 
-static void sntp_synced(struct timeval *tv)
+/* An SNTP sample was applied to the system clock. tcpip thread. */
+static void sntp_accepted(int64_t mono, int64_t delta_us, bool confirmed)
 {
-    (void)tv;
-    s_ntp_last_us = esp_timer_get_time();
     portENTER_CRITICAL(&s_mux);
-    s_st.ntp_syncs++;
+    bool was_valid = s_st.time_valid;
+    uint32_t n = ++s_st.ntp_syncs;
     s_st.time_valid = true;
     s_st.time_src = "ntp";
     s_src_q = TB_TQ_NTP;
     portEXIT_CRITICAL(&s_mux);
+    s_ntp_last_us = mono;
     fault_clear(FAULT_NO_TIME);
     s_rtc_write_req = true;
     if (s_task) xTaskNotifyGive(s_task);
-    ESP_LOGI(TAG, "SNTP sync #%lu", (unsigned long)s_st.ntp_syncs);
+    if (was_valid) {
+        ESP_LOGI(TAG, "SNTP sync #%lu: %+lld ms%s", (unsigned long)n, (long long)(delta_us / 1000),
+                 confirmed ? " (confirmed)" : "");
+    } else {
+        ESP_LOGI(TAG, "SNTP sync #%lu (clock was unset)", (unsigned long)n);
+    }
+}
+
+static void sntp_reject_count(void)
+{
+    portENTER_CRITICAL(&s_mux);
+    s_st.ntp_rejected++;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+/* lwIP calls this with every server reply. It replaces IDF's weak version,
+ * which sets the clock unconditionally, so the IDF sync notification (and
+ * any esp_netif sync_cb) no longer runs: sntp_accepted() does that job.
+ *
+ * The first sample after boot only has to be plausible: an RTC seed can be
+ * a second off. After that, a sample that moves the clock by more than the
+ * ESP crystal could have drifted is held until a second one agrees. One
+ * reply stuck in an ISP queue (0.8 s seen on a congested uplink) must not
+ * step the sample clock or rename PPS seconds. */
+void sntp_sync_time(struct timeval *tv)
+{
+    const int64_t mono = esp_timer_get_time();
+    if (tv->tv_sec < NTP_MIN_EPOCH || tv->tv_sec > NTP_MAX_EPOCH) {
+        sntp_reject_count();
+        ESP_LOGW(TAG, "SNTP sample %lld outside the plausible window: rejected", (long long)tv->tv_sec);
+        return;
+    }
+
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    const int64_t delta = ((int64_t)tv->tv_sec - (int64_t)now.tv_sec) * 1000000 +
+                          ((int64_t)tv->tv_usec - (int64_t)now.tv_usec);
+
+    bool confirmed = false;
+    const int64_t last = s_ntp_last_us;
+    if (last) {
+        const int64_t limit = NTP_HOLD_US + (mono - last) / 1000000 * NTP_HOLD_US_PER_S;
+        if (llabs(delta) > limit) {
+            if (s_cand_valid && mono - s_cand_t < NTP_CAND_MAX_AGE_US &&
+                llabs(delta - s_cand_delta_us) <= NTP_AGREE_US) {
+                confirmed = true;
+            } else {
+                s_cand_valid = true;
+                s_cand_delta_us = delta;
+                s_cand_t = mono;
+                sntp_reject_count();
+                ESP_LOGW(TAG, "SNTP sample %+lld ms off a synced clock: held, re-polling in %d s",
+                         (long long)(delta / 1000), NTP_REPOLL_S);
+                if (s_repoll_timer) {
+                    esp_timer_stop(s_repoll_timer);
+                    esp_timer_start_once(s_repoll_timer, (uint64_t)NTP_REPOLL_S * 1000000);
+                }
+                return;
+            }
+        }
+    }
+
+    s_cand_valid = false;
+    settimeofday(tv, NULL);
+    sntp_set_sync_status(SNTP_SYNC_STATUS_COMPLETED);
+    sntp_accepted(mono, delta, confirmed);
+}
+
+static void repoll_cb(void *arg)
+{
+    (void)arg;
+    esp_sntp_restart();
 }
 
 void timebase_start_sntp(void)
 {
     if (s_sntp_started) return;
     s_sntp_started = true;
+    if (!s_repoll_timer) {
+        const esp_timer_create_args_t rp = { .callback = repoll_cb, .name = "ntp_repoll" };
+        if (esp_timer_create(&rp, &s_repoll_timer) != ESP_OK) s_repoll_timer = NULL;
+    }
     esp_sntp_config_t cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(4,
         ESP_SNTP_SERVER_LIST(CONFIG_SEISMO_NTP_SERVER_1, CONFIG_SEISMO_NTP_SERVER_2,
                              CONFIG_SEISMO_NTP_SERVER_3, CONFIG_SEISMO_NTP_SERVER_4));
-    cfg.sync_cb = sntp_synced;
+    cfg.sync_cb = NULL;            /* sntp_sync_time() above decides and reports */
+    cfg.wait_for_sync = false;     /* nothing waits on the semaphore */
     esp_err_t err = esp_netif_sntp_init(&cfg);
     if (err != ESP_OK) ESP_LOGE(TAG, "SNTP init: %s", esp_err_to_name(err));
     else ESP_LOGI(TAG, "SNTP started");
@@ -402,6 +497,11 @@ static void name_edge(int64_t t_edge, double x)
         return;
     }
     if (x0 == s_fit.utc_x0_s) { s_fit.name_bad = 0; return; }
+    /* Only a recently synced clock may rename seconds. A stale one (network
+     * down for hours, ESP crystal drifting) would rename them wrongly; the
+     * edge count carries the names until SNTP is back. */
+    const int64_t last = s_ntp_last_us;
+    if (!last || t_edge - last > NTP_FRESH_US) { s_fit.name_bad = 0; return; }
     if (++s_fit.name_bad >= NAME_REANCHOR_AFTER) {
         ESP_LOGW(TAG, "PPS seconds renamed by %+lld s from the system clock", (long long)(x0 - s_fit.utc_x0_s));
         s_fit.utc_x0_s = x0;

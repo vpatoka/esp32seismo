@@ -84,7 +84,8 @@ static int cmd_status(int argc, char **argv)
         if (t.pps_naming_errors) printf(", PPS second renamed %lux", (unsigned long)t.pps_naming_errors);
         printf("\n");
     }
-    printf("ntp        %lu syncs, last %lld s ago\n", (unsigned long)t.ntp_syncs, (long long)t.ntp_age_s);
+    printf("ntp        %lu syncs, last %lld s ago, %lu rejected\n", (unsigned long)t.ntp_syncs,
+           (long long)t.ntp_age_s, (unsigned long)t.ntp_rejected);
     if (t.ref != TB_REF_NONE) {
         printf("1 Hz ref   %s, %s, %lu edges", timebase_ref_name(t.ref), t.ref_seen ? "seen" : "not seen",
                (unsigned long)t.ref_edges);
