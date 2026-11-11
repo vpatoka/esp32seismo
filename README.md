@@ -154,7 +154,9 @@ The [carrier board](hardware/carrier/README.md) holds the DevKit, the ADC 15 Cli
 
 ### Wall Clock
 
-SNTP sets the system clock hourly from four servers, in immediate mode, so log times are exact. An optional DS3231 seeds it at boot and holds it between syncs. Sample timestamps don't follow the system clock's steps; see below.
+SNTP sets the system clock hourly, in immediate mode, so log times are exact. An optional DS3231 seeds it at boot and holds it between syncs. Sample timestamps don't follow the system clock's steps; see below.
+
+The first server comes from DHCP option 42, so a LAN time server is used when the network offers one; the four pool servers stay behind it as fallback. lwIP is built with round-trip compensation and reply checking. On pfSense: serve NTP on LAN (Services > NTP), then set NTP Server 1 to the router's LAN address (Services > DHCP Server > LAN). The boot log then shows `SNTP started: DHCP 10.10.10.1, then 0.pool.ntp.org, ...`; without option 42 it says `DHCP none` and the first sync comes about 15 s later. After a reconnect the clock polls right away.
 
 Every SNTP reply is checked before it touches the clock. Times outside build date minus a day to 2106 are rejected. Once synced, a reply that would move the clock by more than 200 ms plus 50 ppm drift since the last sync is held, re-polled after 30 s, and applied only if the next one agrees within 100 ms. On a congested uplink one reply can sit in a queue for most of a second; without the check it would shift the timestamps and rename the PPS seconds. `time.ntp_rejected` in `/api/status` counts what was held or rejected.
 

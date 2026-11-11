@@ -457,7 +457,9 @@ $$ 200\ \text{ms} + 50\ \text{ppm} \cdot (t - t_\text{last}) $$
 
   is held, the server is re-polled after 30 s, and the held value is applied only when the next sample is within 100 ms of it.
 
-A single SNTP reply has no round-trip correction in stock lwIP, so its error is the time it spent in the network. On a congested uplink that reached 0.83 s on the bench (mtr showed 275 ms average and 1.48 s worst RTT past the ISP edge). Applied, that would move `ntp` timestamps by 0.83 s and, being over 0.5 s, rename the PPS seconds.
+Stock lwIP takes the server's transmit time as is, so a reply's error is the time it spent in the network. On a congested uplink that reached 0.83 s on the bench (mtr showed 275 ms average and 1.48 s worst RTT past the ISP edge). Applied, that would move `ntp` timestamps by 0.83 s and, being over 0.5 s, rename the PPS seconds.
+
+The firmware builds lwIP with `SNTP_COMP_ROUNDTRIP=1`, which computes the RFC 4330 offset from all four timestamps, and `SNTP_CHECK_RESPONSE=2`, which accepts only a reply from the server asked that echoes our request timestamp. Symmetric delay cancels; asymmetric delay still leaks through at half its size, and the hold rule above catches what is left. The first server slot is filled from DHCP option 42, so a LAN server (1-2 ms away, its own clock filter already applied) is preferred over the pool.
 
 ### 8.4 Steering by PPS and handover
 
