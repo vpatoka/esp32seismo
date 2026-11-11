@@ -93,8 +93,13 @@
 #define WIFI_AP_CHANNEL         1             /* 2.4 GHz: every phone can see it */
 #define WIFI_AP_MAX_CONN        4
 
-/* ── Task priorities (WiFi runs at 23, lwIP tcpip at 18) ───────────────── */
-#define PRIO_ACQ                20            /* one SPI frame per DRDY, never late */
+/* ── Task priorities (WiFi runs at 23, esp_timer at 22, lwIP tcpip at 18) ─
+ * Acquisition sits above the WiFi driver. The ADC FIFO holds two
+ * conversions, 2 ms at 1000 SPS, and a WiFi scan, connect or block-ack
+ * setup can hold the single core longer than that. The task needs about
+ * 30 to 60 us per input period and never blocks on I/O (its log lines go
+ * out through the timebase task), so WiFi loses at most a few percent. */
+#define PRIO_ACQ                24            /* configMAX_PRIORITIES - 1 */
 #define PRIO_TIMEBASE           10
 #define PRIO_CAPTIVE_DNS        5
 #define PRIO_BUTTON             4

@@ -100,12 +100,19 @@ static int64_t s_rtc_write_t;           /* write that moved the SQW phase, 0 = h
 
 /* Boot seed at the RTC seconds rollover. Task only, except s_seed_tick. */
 #define SEED_POLL_US       2000
-#define SEED_TIMEOUT_US    1500000
+/* A rollover seen across a longer gap between two polls is not used: the
+ * edge could be anywhere in it. The task runs at priority 10, and WiFi
+ * start-up (PHY calibration at 23) can hold it off for most of a second;
+ * a midpoint taken across that was 0.08 to 0.5 s off on the bench. */
+#define SEED_MAX_GAP_US    6000
+#define SEED_TIMEOUT_US    3500000      /* room for two rollovers skipped */
 static esp_timer_handle_t s_seed_timer;
 static volatile bool s_seed_tick;
 static bool    s_seed_active;
 static time_t  s_seed_utc;              /* RTC time read at the start */
-static uint8_t s_seed_sec;              /* its seconds register */
+static time_t  s_seed_base;             /* second the seconds register now shows */
+static uint8_t s_seed_sec;              /* that register value */
+static uint8_t s_seed_skipped;          /* rollovers passed over for a long gap */
 static int64_t s_seed_t0, s_seed_t_last;
 
 /* Sample clock without pps: utc = esp + off(esp), with
@@ -491,9 +498,10 @@ void timebase_start_sntp(void)
  * samples late and, with GPS and no network, can name every PPS second one
  * early. Instead, poll the seconds register every SEED_POLL_US (one byte,
  * about 0.4 ms at 100 kHz) until it changes, and set the clock from that
- * edge: within about a millisecond. time_valid waits for it, at most
- * SEED_TIMEOUT_US. */
-static void seed_apply(int64_t utc_us, bool aligned)
+ * edge: within half the gap between the two reads, at most 3 ms. A change
+ * seen across a longer gap is skipped, and the next rollover is used.
+ * time_valid waits for it, at most SEED_TIMEOUT_US. */
+static void seed_apply(int64_t utc_us, bool aligned, int64_t unc_us)
 {
     if (s_st.time_valid) return;            /* SNTP got there first */
     struct timeval tv = { .tv_sec = (time_t)(utc_us / 1000000), .tv_usec = (suseconds_t)(utc_us % 1000000) };
@@ -504,8 +512,13 @@ static void seed_apply(int64_t utc_us, bool aligned)
     s_src_q = TB_TQ_RTC;
     portEXIT_CRITICAL(&s_mux);
     fault_clear(FAULT_NO_TIME);
-    if (aligned) ESP_LOGI(TAG, "System clock seeded from the RTC at its seconds rollover (holdover until SNTP)");
-    else ESP_LOGW(TAG, "RTC rollover not seen: seeded to the whole second (up to 1 s late)");
+    if (aligned) {
+        ESP_LOGI(TAG, "System clock seeded from the RTC at its seconds rollover, +-%.1f ms "
+                 "(%u skipped, holdover until SNTP)", (double)unc_us / 1000.0, s_seed_skipped);
+    } else {
+        ESP_LOGW(TAG, "RTC rollover not seen cleanly (%u skipped): seeded to the whole second (up to 1 s late)",
+                 s_seed_skipped);
+    }
 }
 
 static void seed_timer_cb(void *arg)
@@ -540,11 +553,13 @@ static void rtc_seed_begin(void)
     }
     if (s_st.time_valid) return;
     s_seed_utc = utc;
+    s_seed_base = utc;
     s_seed_sec = (uint8_t)(utc % 60);
+    s_seed_skipped = 0;
     s_seed_t0 = t_read;
     s_seed_t_last = t_read;
     if (!s_seed_timer || esp_timer_start_periodic(s_seed_timer, SEED_POLL_US) != ESP_OK) {
-        seed_apply((int64_t)utc * 1000000, false);
+        seed_apply((int64_t)utc * 1000000, false, 0);
         return;
     }
     s_seed_active = true;
@@ -560,14 +575,22 @@ static void seed_poll(void)
     const int64_t t_end = esp_timer_get_time();
     if (ok && s != s_seed_sec) {
         /* The register changed between the last read and this one. */
-        const int64_t t_roll = (s_seed_t_last + t_start) / 2;
-        seed_stop();
-        seed_apply(((int64_t)s_seed_utc + 1) * 1000000 + (esp_timer_get_time() - t_roll), true);
-        return;
+        const int64_t gap = t_start - s_seed_t_last;
+        if (gap <= SEED_MAX_GAP_US) {
+            const int64_t t_roll = (s_seed_t_last + t_start) / 2;
+            seed_stop();
+            seed_apply(((int64_t)s_seed_base + 1) * 1000000 + (esp_timer_get_time() - t_roll), true, gap / 2);
+            return;
+        }
+        /* Held off too long to place the edge: wait for the next one.
+         * A gap past a whole second shows up as a step of more than one. */
+        s_seed_base += (s >= s_seed_sec ? s - s_seed_sec : s + 60 - s_seed_sec);
+        s_seed_sec = s;
+        s_seed_skipped++;
     }
     if (!ok || t_end - s_seed_t0 > SEED_TIMEOUT_US) {
         seed_stop();
-        seed_apply((int64_t)s_seed_utc * 1000000 + (esp_timer_get_time() - s_seed_t0), false);
+        seed_apply((int64_t)s_seed_utc * 1000000 + (esp_timer_get_time() - s_seed_t0), false, 0);
         return;
     }
     s_seed_t_last = t_end;
@@ -936,6 +959,7 @@ static void timebase_task(void *arg)
                 rtc_poll();
             }
         }
+        acq_log_drain();                /* last: it may block on the console */
     }
 }
 

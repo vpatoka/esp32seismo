@@ -179,7 +179,7 @@ An output sample stands for an input-sample position: the count at its newest in
 |---|---|---|---|
 | `pps` | GPS PPS and a valid rate fit | Position on the fitted line through the PPS edges. The PPS edge defines the second, SNTP only names it (to the nearest second). | µs |
 | `ntp` | SNTP, no usable PPS | DRDY time through a sample clock that follows the system clock but changes rate by at most 500 ppm | ms, never steps |
-| `rtc` | DS3231 seed, no SNTP yet | Same, from the RTC-seeded clock, set at the RTC's seconds rollover | about 1 ms at boot, then RTC drift (2 ppm, 0.17 s a day) |
+| `rtc` | DS3231 seed, no SNTP yet | Same, from the RTC-seeded clock, set at the RTC's seconds rollover | within 3 ms at boot (the boot log gives the figure), then RTC drift (2 ppm, 0.17 s a day) |
 | `none` | No wall-clock time | Samples carry no UTC | |
 
 - **No steps:** an SNTP correction of 10 ms is slewed into the sample clock over 20 s. Only a change over 0.5 s (a leap second, a bad RTC seed) is applied at once.
@@ -223,16 +223,18 @@ C only, native IDF APIs, no Arduino, no managed components.
 
 | Context | Priority | Job |
 |---|---|---|
+| Acquisition | 24 | DRDY accounting, SPI frames, FIR, output ring, statistics |
 | WiFi driver | 23 | IDF |
-| Acquisition | 20 | DRDY accounting, SPI frames, FIR, output ring, statistics |
 | lwIP tcpip | 18 | IDF, SNTP callback |
-| Timebase | 10 | 1 Hz rate fit, PPS timestamp model, sample-clock slew, DS3231 (owns I2C) |
+| Timebase | 10 | 1 Hz rate fit, PPS timestamp model, sample-clock slew, DS3231 (owns I2C), prints the acquisition log lines |
 | httpd | default | API and page |
 | Captive DNS, button, LED | 5, 4, 2 | Housekeeping |
 
 - **One owner per peripheral:** acquisition owns SPI, timebase owns I2C.
 - **ISRs only timestamp, count and notify,** from IRAM, and keep running through flash writes. Every DRDY edge is counted, so a sample read late or failing its CRC is held and flagged rather than dropped, and the sample count stays on the true grid.
 - **Lock-free output ring** in PSRAM (131072 samples, 4096 in internal RAM without PSRAM): the acquisition task never waits on an HTTP reader.
+- **Acquisition above WiFi, and no console I/O on the sample path.** The ADC FIFO holds two conversions (2 ms at 1000 SPS). The task runs above the WiFi driver, and its log lines go through a small ring that the timebase task prints.
+- **No flash writes while sampling, except on request.** A flash write turns the cache off and stops every task, so conversions past the FIFO's two are lost. WiFi keeps its config in RAM (credentials come from our own config blob), and lwIP doesn't store the DHCP lease. Config saves and OTA still write flash, and the samples they cost show up as gap-flagged output. PHY calibration is written only when the stored copy is missing or stale.
 - **Settings changes** restart acquisition in place, with no reboot.
 
 ## Talking to the Station

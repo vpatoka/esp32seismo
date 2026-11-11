@@ -466,8 +466,20 @@ function status(){
       ['RTC',s.rtc.enabled?s.rtc.model+', '+(s.rtc.online?'online':'offline')+(s.rtc.temp!=null?', '+fmt(s.rtc.temp,2)+' °C':''):'not fitted']]);
     $('fwsum').textContent='firmware '+s.fw;
     $('netkv').innerHTML=kv([['Address',w.ip+(w.ip6?'  '+w.ip6:'')],['Network',w.mode==='ap'?'setup portal':w.ssid+', channel '+w.ch+' ('+w.band+' GHz), '+w.rssi+' dBm'],
-      ['Firmware',s.fw+' on IDF '+s.idf+', image '+s.ota],['Memory',Math.round(s.heap/1024)+' KB free, lowest '+Math.round(s.heap_min/1024)+' KB']]);
+      ['Firmware',s.fw+' on IDF '+s.idf+', image '+s.ota]].concat(hwRows(s)));
   });
+}
+function hwRows(s){
+  var h=s.hw,kb=function(b){return Math.round(b/1024)+' KB';};
+  if(!h)return [['Memory',kb(s.heap)+' free, lowest '+kb(s.heap_min)]];   // older firmware
+  var m=h.mem,k=h.stack_free,r=h.radio;
+  var rows=[['Hardware','ESP32-C5 '+h.chip_rev+', '+h.cpu_mhz+' MHz, flash '+h.flash+', MAC '+h.mac+', reset: '+h.reset],
+    ['Internal RAM',kb(m.int_free)+' free of '+kb(m.int_total)+', lowest '+kb(m.int_min)+', largest block '+kb(m.int_largest)],
+    ['PSRAM',m.psram_total?kb(m.psram_free)+' free of '+kb(m.psram_total)+', lowest '+kb(m.psram_min):'none'],
+    ['Stack free','acq '+k.acq+', timebase '+k.timebase+', httpd '+k.httpd+', tcpip '+k.tcpip+', wifi '+k.wifi+' bytes']];
+  if(s.wifi.mode!=='ap')rows.push(['Radio',(r.up?r.phy+', AP '+r.bssid+', ':'')+'TX max '+fmt(r.tx_power_dbm,1)+' dBm, '+
+    r.disconnects+' disconnects since boot'+(r.disconnects?' (last reason '+r.last_reason+')':'')]);
+  return rows;
 }
 function kv(a){return a.map(function(p){return '<dt>'+p[0]+'</dt><dd>'+esc(p[1])+'</dd>';}).join('');}
 function dur(s){if(s<0)return 'never';if(s<90)return s+' s';if(s<5400)return Math.round(s/60)+' min';if(s<172800)return Math.round(s/3600)+' h';return Math.round(s/86400)+' d';}

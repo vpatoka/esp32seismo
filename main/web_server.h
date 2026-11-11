@@ -74,6 +74,32 @@ extern volatile seismo_wifi_mode_t g_wifi_mode;
 extern volatile bool g_wifi_connected;
 extern char g_ip_address[16];
 
+/* Hardware and runtime health, for the banner, the console and
+ * /api/status. Internal RAM and PSRAM are reported apart: WiFi, lwIP,
+ * stacks and the sample path live in internal RAM, and that is the pool
+ * that runs out. Stack figures are the least free space seen, in bytes
+ * (0 = task not running). */
+typedef struct {
+    uint32_t int_free, int_min, int_largest, int_total;
+    uint32_t psram_free, psram_min, psram_largest, psram_total;
+    uint32_t cpu_mhz;
+    uint16_t chip_rev;              /* major * 100 + minor */
+    uint8_t  cores;
+    uint8_t  mac[6];
+    const char *reset_reason;
+    bool     wifi_up;
+    int8_t   rssi;
+    uint8_t  channel;
+    uint8_t  bssid[6];
+    const char *phy;                /* "11ax", "11ac", "11n", "11g", "11b", "" */
+    float    tx_power_dbm;          /* configured maximum */
+    uint32_t wifi_disconnects;      /* since boot */
+    uint8_t  wifi_last_reason;      /* wifi_err_reason_t of the last one, 0 = none */
+    uint32_t stack_acq, stack_timebase, stack_httpd, stack_tcpip, stack_wifi;
+} seismo_hw_t;
+
+void seismo_hw_get(seismo_hw_t *out);
+
 void      config_set_defaults(void);
 esp_err_t config_load(void);
 esp_err_t config_save(void);

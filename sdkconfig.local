@@ -14,8 +14,14 @@ CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
 # SNTP callbacks run on the tcpip thread and log with formatting
 CONFIG_LWIP_TCPIP_TASK_STACK_SIZE=4096
 
-# Reuse the last DHCP lease from NVS: faster reconnect, stable IP after power loss
-CONFIG_LWIP_DHCP_RESTORE_LAST_IP=y
+# No DHCP lease in NVS: lwIP writes it on every IP-up, and a flash write stops
+# the acquisition task for longer than the ADC FIFO lasts (2 ms at 1000 SPS).
+# Use a DHCP reservation on the router for a stable address.
+CONFIG_LWIP_DHCP_RESTORE_LAST_IP=n
+
+# Power save is off (beacon-rate supply modulation), so the WiFi sleep path
+# never runs. Its IRAM copy only costs internal heap.
+CONFIG_ESP_WIFI_SLP_IRAM_OPT=n
 
 # Log lines carry wall-clock time (UTC) instead of ms since boot
 CONFIG_LOG_TIMESTAMP_SOURCE_SYSTEM=y

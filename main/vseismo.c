@@ -41,7 +41,9 @@
 #include "freertos/task.h"
 #include "esp_chip_info.h"
 #include "esp_app_desc.h"
+#include "esp_clk_tree.h"
 #include "esp_event.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
@@ -75,6 +77,8 @@ static esp_netif_t *s_ap_netif;
 static esp_timer_handle_t s_reconnect_timer;
 static esp_timer_handle_t s_dhcp_timer;
 static uint32_t s_retry_ms = WIFI_RETRY_INITIAL_MS;
+static volatile uint32_t s_wifi_disconnects;
+static volatile uint8_t  s_wifi_last_reason;
 
 static TaskHandle_t s_button_task;
 static volatile bool s_led_override;
@@ -299,7 +303,19 @@ static void print_network_banner(void)
         else ESP_LOGI(TAG, "  Open      : http://" IPSTR ":%u", IP2STR(&ip.ip), g_config.http_port);
     }
     ESP_LOGI(TAG, "  Web login : %s", g_config.weblogin_enabled ? "enabled" : "disabled (open)");
-    ESP_LOGI(TAG, "  Heap free : %lu KB", (unsigned long)(esp_get_free_heap_size() / 1024));
+    seismo_hw_t hw;
+    seismo_hw_get(&hw);
+    if (hw.wifi_up) {
+        ESP_LOGI(TAG, "  Radio     : %s, TX power max %.1f dBm", hw.phy, (double)hw.tx_power_dbm);
+    }
+    ESP_LOGI(TAG, "  Internal  : %lu KB free of %lu KB, lowest %lu KB, largest block %lu KB",
+             (unsigned long)(hw.int_free / 1024), (unsigned long)(hw.int_total / 1024),
+             (unsigned long)(hw.int_min / 1024), (unsigned long)(hw.int_largest / 1024));
+    if (hw.psram_total) {
+        ESP_LOGI(TAG, "  PSRAM     : %lu KB free of %lu KB, lowest %lu KB",
+                 (unsigned long)(hw.psram_free / 1024), (unsigned long)(hw.psram_total / 1024),
+                 (unsigned long)(hw.psram_min / 1024));
+    }
     ESP_LOGI(TAG, "==================================================");
 }
 
@@ -348,6 +364,8 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
                 if (g_wifi_mode != SEISMO_WIFI_STA) break;
                 const wifi_event_sta_disconnected_t *e = data;
                 g_wifi_connected = false;
+                s_wifi_disconnects = s_wifi_disconnects + 1;
+                s_wifi_last_reason = e->reason;
                 esp_timer_stop(s_dhcp_timer);
                 ESP_LOGW(TAG, "WiFi disconnected (reason %d), retry in %lu s",
                          e->reason, (unsigned long)(s_retry_ms / 1000));
@@ -516,6 +534,59 @@ static const char *reset_reason_name(esp_reset_reason_t r)
     }
 }
 
+static uint32_t stack_free(const char *task)
+{
+    TaskHandle_t h = xTaskGetHandle(task);
+    return h ? (uint32_t)uxTaskGetStackHighWaterMark(h) : 0;   /* bytes on IDF */
+}
+
+void seismo_hw_get(seismo_hw_t *o)
+{
+    memset(o, 0, sizeof(*o));
+    const uint32_t ic = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+    o->int_free    = (uint32_t)heap_caps_get_free_size(ic);
+    o->int_min     = (uint32_t)heap_caps_get_minimum_free_size(ic);
+    o->int_largest = (uint32_t)heap_caps_get_largest_free_block(ic);
+    o->int_total   = (uint32_t)heap_caps_get_total_size(ic);
+    o->psram_total = (uint32_t)heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+    if (o->psram_total) {
+        o->psram_free    = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+        o->psram_min     = (uint32_t)heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM);
+        o->psram_largest = (uint32_t)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+    }
+
+    uint32_t hz = 0;
+    esp_clk_tree_src_get_freq_hz(SOC_MOD_CLK_CPU, ESP_CLK_TREE_SRC_FREQ_PRECISION_CACHED, &hz);
+    o->cpu_mhz = hz / 1000000;
+    esp_chip_info_t chip;
+    esp_chip_info(&chip);
+    o->chip_rev = chip.revision;
+    o->cores = chip.cores;
+    esp_read_mac(o->mac, ESP_MAC_WIFI_STA);
+    o->reset_reason = reset_reason_name(esp_reset_reason());
+
+    o->phy = "";
+    wifi_ap_record_t ap;
+    if (g_wifi_mode == SEISMO_WIFI_STA && g_wifi_connected && esp_wifi_sta_get_ap_info(&ap) == ESP_OK) {
+        o->wifi_up = true;
+        o->rssi = ap.rssi;
+        o->channel = ap.primary;
+        memcpy(o->bssid, ap.bssid, sizeof(o->bssid));
+        o->phy = ap.phy_11ax ? "11ax" : ap.phy_11ac ? "11ac" : ap.phy_11n ? "11n" :
+                 ap.phy_11g ? "11g" : ap.phy_11b ? "11b" : "";
+    }
+    int8_t p = 0;
+    if (g_wifi_mode != SEISMO_WIFI_NONE && esp_wifi_get_max_tx_power(&p) == ESP_OK) o->tx_power_dbm = p * 0.25f;
+    o->wifi_disconnects = s_wifi_disconnects;
+    o->wifi_last_reason = s_wifi_last_reason;
+
+    o->stack_acq      = stack_free("acq");
+    o->stack_timebase = stack_free("timebase");
+    o->stack_httpd    = stack_free("httpd");
+    o->stack_tcpip    = stack_free("tiT");
+    o->stack_wifi     = stack_free("wifi");
+}
+
 static i2c_master_bus_handle_t i2c_bus_init(void)
 {
     const i2c_master_bus_config_t cfg = {
@@ -551,6 +622,13 @@ void app_main(void)
     ESP_LOGI(TAG, "  ESP32-C5 rev v%d.%d, %d core, IDF %s",
              chip.revision / 100, chip.revision % 100, chip.cores, app->idf_ver);
     ESP_LOGI(TAG, "  Reset reason: %s", reset_reason_name(rr));
+    {
+        seismo_hw_t hw;
+        seismo_hw_get(&hw);
+        ESP_LOGI(TAG, "  CPU %lu MHz, flash %s, PSRAM %lu KB, internal heap %lu KB free",
+                 (unsigned long)hw.cpu_mhz, CONFIG_ESPTOOLPY_FLASHSIZE,
+                 (unsigned long)(hw.psram_total / 1024), (unsigned long)(hw.int_free / 1024));
+    }
     ESP_LOGI(TAG, "  VE3VPT");
     ESP_LOGI(TAG, "==================================================");
 
@@ -597,6 +675,11 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_GOT_IP6, wifi_event_handler, NULL, NULL));
     wifi_init_config_t wcfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&wcfg));
+    /* Credentials live in our own config blob, so the driver's copy in NVS
+     * buys nothing. Storing it would mean a flash write while sampling: the
+     * cache goes off, the acquisition task stops, and every conversion past
+     * the ADC FIFO's two is lost. */
+    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
 
     if (led_init() != ESP_OK) ESP_LOGW(TAG, "Status LED unavailable");
     if (xTaskCreate(led_task, "status_led", 2560, NULL, PRIO_STATUS_LED, NULL) != pdPASS) {

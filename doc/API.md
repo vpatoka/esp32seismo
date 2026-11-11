@@ -76,6 +76,34 @@ The rate is the slope of a least-squares line through the ADC sample position at
 
 `fs`, `adc_ppm`, `esp_ppm` and `rate_sigma_ppm` are `null` while `rate_valid` is `false`. Edges that aren't a whole number of seconds apart (within 20 ms) are ignored and not counted as rejects.
 
+## /api/status: hardware
+
+```
+curl -s http://vseismo/api/status | jq .hw
+{"cpu_mhz":240,"cores":1,"chip_rev":"v1.2","flash":"8MB","mac":"02:00:00:00:00:01","reset":"USB",
+ "mem":{"int_free":98304,"int_min":91200,"int_largest":73728,"int_total":214000,
+        "psram_free":5242880,"psram_min":5242880,"psram_largest":5177344,"psram_total":8388608},
+ "radio":{"up":true,"rssi":-52,"ch":6,"bssid":"02:00:00:00:00:02","phy":"11ax",
+          "tx_power_dbm":20.00,"disconnects":0,"last_reason":0},
+ "stack_free":{"acq":2100,"timebase":1500,"httpd":4800,"tcpip":1900,"wifi":3000}}
+```
+
+The top-level `heap` and `heap_min` stay as they were: internal RAM and PSRAM added together. They say little on this board, because the 3 MB output ring sits in PSRAM. Watch `hw.mem.int_*` instead.
+
+| Field | Unit | Meaning |
+|---|---|---|
+| `cpu_mhz`, `cores`, `chip_rev`, `flash`, `mac` | | CPU clock, core count, silicon revision, flash size, station MAC |
+| `reset` | | Why the chip last reset: `power-on`, `USB`, `software`, `panic`, `task watchdog`, `brownout`, ... |
+| `mem.int_free`, `mem.int_min` | bytes | Internal RAM free now, and the lowest it has been since boot. WiFi, lwIP, task stacks and the sample path all live here. |
+| `mem.int_largest` | bytes | Largest single free block in internal RAM. Far below `int_free` means fragmentation. |
+| `mem.int_total` | bytes | Internal RAM the heap manages |
+| `mem.psram_*` | bytes | The same for PSRAM. All zero on a board without it. |
+| `radio.up` | | Station associated, with an address |
+| `radio.rssi`, `radio.ch`, `radio.bssid`, `radio.phy` | dBm, , , | Signal, channel, AP radio and protocol (`11ax`, `11ac`, `11n`, `11g`, `11b`). Empty while not associated. |
+| `radio.tx_power_dbm` | dBm | Configured maximum transmit power |
+| `radio.disconnects`, `radio.last_reason` | | Station disconnects since boot, and the IDF `wifi_err_reason_t` code of the last one (0 = none yet) |
+| `stack_free.*` | bytes | Least free stack each task has had since boot (0 = task not running) |
+
 ## /api/wave
 
 ```
@@ -99,7 +127,8 @@ curl 'http://vseismo/api/wave?since=0&max=5'
 
 - After a restart, output starts only once the FIR history holds settled data (taps + 3 input samples), so there's no ramp up from zero.
 - Poll again with `since=<next>`. If `seq0` isn't the `next` you asked for, there's a gap.
-- The station keeps the last `ring_len` output samples (see `/api/acq`): 131072 with PSRAM, about 22 minutes at 100 SPS, or 4096 (41 s) on a board without it.
+- The station keeps the last `ring_len` output samples (see `/api/acq`): 131072 with PSRAM, about 22 minutes at 100 SPS, or 4096 (41 s) on a board without it. Once the ring has wrapped, its oldest 512 samples are not served. The reply is streamed from the ring in small blocks, and this keeps the writer away from the samples being sent.
+- If a sample is overwritten while its reply is still going out (only on a connection stalled for seconds), it's sent as the previous value with flag bit 0 set.
 - One reply carries at most `max` samples. `order` picks which ones when more are waiting:
   - `order=newest` (the default): the newest `max`. The rest are skipped, which suits a live display.
   - `order=oldest`: the oldest `max` the ring still holds, in order. Nothing is skipped. `pending` says how many newer samples follow, so a recorder polls again at once while `pending` is above 0. After an outage it can catch up on the whole ring, up to 22 minutes at 100 SPS, in steps of `max`.

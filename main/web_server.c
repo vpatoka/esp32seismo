@@ -31,6 +31,7 @@
 #include "esp_http_server.h"
 #include "esp_image_format.h"
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "esp_netif.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
@@ -709,7 +710,7 @@ static esp_err_t api_status_handler(httpd_req_t *req)
         "\"rtc\":{\"enabled\":%s,\"online\":%s,\"model\":\"%s\",\"osf\":%s,\"temp\":%s},"
         "\"wifi\":{\"mode\":\"%s\",\"up\":%s,\"ssid\":\"%s\",\"rssi\":%d,\"ch\":%d,\"band\":\"%s\","
         "\"ip\":\"%s\",\"ip6\":\"%s\"},"
-        "\"faults\":%lu,\"class_a\":%s,\"ota\":\"%s\",\"ota_busy\":%s}",
+        "\"faults\":%lu,\"class_a\":%s,\"ota\":\"%s\",\"ota_busy\":%s",
         SEISMO_API_VERSION, app->version, app->idf_ver,
         (long long)(esp_timer_get_time() / 1000000),
         (unsigned long)esp_get_free_heap_size(), (unsigned long)esp_get_minimum_free_heap_size(),
@@ -729,8 +730,33 @@ static esp_err_t api_status_handler(httpd_req_t *req)
         (unsigned long)fault_get_mask(), fault_active() ? "true" : "false",
         ota_state_name(), s_ota_active ? "true" : "false");
     if (n < 0 || n >= (int)sizeof(buf)) return send_json_err(req, "status overflow");
+
+    seismo_hw_t hw;
+    seismo_hw_get(&hw);
+    char hwb[720];
+    int m = snprintf(hwb, sizeof(hwb),
+        ",\"hw\":{\"cpu_mhz\":%lu,\"cores\":%u,\"chip_rev\":\"v%u.%u\",\"flash\":\"%s\","
+        "\"mac\":\"" MACSTR "\",\"reset\":\"%s\","
+        "\"mem\":{\"int_free\":%lu,\"int_min\":%lu,\"int_largest\":%lu,\"int_total\":%lu,"
+        "\"psram_free\":%lu,\"psram_min\":%lu,\"psram_largest\":%lu,\"psram_total\":%lu},"
+        "\"radio\":{\"up\":%s,\"rssi\":%d,\"ch\":%u,\"bssid\":\"" MACSTR "\",\"phy\":\"%s\","
+        "\"tx_power_dbm\":%.2f,\"disconnects\":%lu,\"last_reason\":%u},"
+        "\"stack_free\":{\"acq\":%lu,\"timebase\":%lu,\"httpd\":%lu,\"tcpip\":%lu,\"wifi\":%lu}}}",
+        (unsigned long)hw.cpu_mhz, hw.cores, hw.chip_rev / 100, hw.chip_rev % 100, CONFIG_ESPTOOLPY_FLASHSIZE,
+        MAC2STR(hw.mac), hw.reset_reason,
+        (unsigned long)hw.int_free, (unsigned long)hw.int_min, (unsigned long)hw.int_largest,
+        (unsigned long)hw.int_total, (unsigned long)hw.psram_free, (unsigned long)hw.psram_min,
+        (unsigned long)hw.psram_largest, (unsigned long)hw.psram_total,
+        hw.wifi_up ? "true" : "false", hw.rssi, hw.channel, MAC2STR(hw.bssid), hw.phy,
+        (double)hw.tx_power_dbm, (unsigned long)hw.wifi_disconnects, hw.wifi_last_reason,
+        (unsigned long)hw.stack_acq, (unsigned long)hw.stack_timebase, (unsigned long)hw.stack_httpd,
+        (unsigned long)hw.stack_tcpip, (unsigned long)hw.stack_wifi);
+    if (m < 0 || m >= (int)sizeof(hwb)) return send_json_err(req, "status overflow");
+
     set_json_headers(req);
-    return httpd_resp_send(req, buf, n);
+    httpd_resp_send_chunk(req, buf, n);
+    httpd_resp_send_chunk(req, hwb, m);
+    return httpd_resp_send_chunk(req, NULL, 0);
 }
 
 /* ── Acquisition ──────────────────────────────────────────────────────────
@@ -799,6 +825,41 @@ static esp_err_t api_acq_handler(httpd_req_t *req)
  * ACQ_F_* per sample: the FIR window of that sample held a lost, corrupt,
  * unsettled or clipped input. */
 #define WAVE_MAX 1000
+#define WAVE_BLK 64            /* samples per ring copy, on the httpd stack */
+
+/* One JSON array of the window: channel col, or the flags when col ==
+ * ACQ_NCH. Read from the ring block by block; nothing is allocated. A
+ * sample the writer reached during the reply (only possible on a stalled
+ * connection) goes out as the previous value with the gap flag set. The
+ * flags array is sent last, so it sees every loss an earlier array saw. */
+static void wave_column(httpd_req_t *req, int col, uint32_t first, int cnt)
+{
+    acq_sample_t blk[WAVE_BLK];
+    char chunk[512];
+    int o = col < ACQ_NCH ? snprintf(chunk, sizeof(chunk), ",\"ch%d\":[", col)
+                          : snprintf(chunk, sizeof(chunk), ",\"flags\":[");
+    int32_t held = 0;
+    for (int off = 0; off < cnt; off += WAVE_BLK) {
+        int k = cnt - off < WAVE_BLK ? cnt - off : WAVE_BLK;
+        int lost = acq_read_block(first + (uint32_t)off, blk, k);
+        for (int i = 0; i < k; i++) {
+            if (o > (int)sizeof(chunk) - 16) {
+                httpd_resp_send_chunk(req, chunk, o);
+                o = 0;
+            }
+            const char *sep = off + i ? "," : "";
+            if (col < ACQ_NCH) {
+                if (i >= lost) held = blk[i].v[col];
+                o += snprintf(chunk + o, sizeof(chunk) - (size_t)o, "%s%ld", sep, (long)held);
+            } else {
+                unsigned f = i < lost ? ACQ_F_GAP : blk[i].flags;
+                o += snprintf(chunk + o, sizeof(chunk) - (size_t)o, "%s%u", sep, f);
+            }
+        }
+    }
+    o += snprintf(chunk + o, sizeof(chunk) - (size_t)o, "]");
+    httpd_resp_send_chunk(req, chunk, o);
+}
 
 static esp_err_t api_wave_handler(httpd_req_t *req)
 {
@@ -818,10 +879,13 @@ static esp_err_t api_wave_handler(httpd_req_t *req)
     if (max < 1) max = 1;
     if (max > WAVE_MAX) max = WAVE_MAX;
 
-    acq_sample_t *s = malloc(sizeof(acq_sample_t) * (size_t)max);
-    if (!s) return send_json_err(req, "no memory");
-    uint32_t next = 0, pending = 0;
-    int cnt = acq_read_since(since, s, max, oldest, &next, &pending);
+    uint32_t first = 0, next = 0, pending = 0;
+    int cnt = acq_read_window(since, max, oldest, &first, &next, &pending);
+
+    /* The header carries the first sample's time. One already overwritten
+     * is dropped from the front, as before. */
+    acq_sample_t s0 = { 0 };
+    while (cnt > 0 && acq_read_block(first, &s0, 1) != 0) { first++; cnt--; }
     acq_status_t st;
     acq_get_status(&st);
 
@@ -829,35 +893,12 @@ static esp_err_t api_wave_handler(httpd_req_t *req)
     char line[160];
     snprintf(line, sizeof(line),
              "{\"ok\":true,\"next\":%lu,\"seq0\":%lu,\"n\":%d,\"pending\":%lu,\"fs\":%.4f,\"t0\":%lld,\"tq\":\"%s\"",
-             (unsigned long)next, (unsigned long)(cnt ? s[0].seq : next), cnt, (unsigned long)pending,
-             st.fs_out, (long long)(cnt ? s[0].utc_us / 1000 : 0),
-             timebase_tq_name(cnt ? (tb_tq_t)s[0].tq : TB_TQ_NONE));
+             (unsigned long)next, (unsigned long)(cnt ? first : next), cnt, (unsigned long)pending,
+             st.fs_out, (long long)(cnt ? s0.utc_us / 1000 : 0),
+             timebase_tq_name(cnt ? (tb_tq_t)s0.tq : TB_TQ_NONE));
     httpd_resp_send_chunk(req, line, HTTPD_RESP_USE_STRLEN);
 
-    char chunk[512];
-    for (int c = 0; c < ACQ_NCH; c++) {
-        int o = snprintf(chunk, sizeof(chunk), ",\"ch%d\":[", c);
-        for (int i = 0; i < cnt; i++) {
-            if (o > (int)sizeof(chunk) - 16) {
-                httpd_resp_send_chunk(req, chunk, o);
-                o = 0;
-            }
-            o += snprintf(chunk + o, sizeof(chunk) - (size_t)o, "%s%ld", i ? "," : "", (long)s[i].v[c]);
-        }
-        o += snprintf(chunk + o, sizeof(chunk) - (size_t)o, "]");
-        httpd_resp_send_chunk(req, chunk, o);
-    }
-    int o = snprintf(chunk, sizeof(chunk), ",\"flags\":[");
-    for (int i = 0; i < cnt; i++) {
-        if (o > (int)sizeof(chunk) - 8) {
-            httpd_resp_send_chunk(req, chunk, o);
-            o = 0;
-        }
-        o += snprintf(chunk + o, sizeof(chunk) - (size_t)o, "%s%u", i ? "," : "", (unsigned)s[i].flags);
-    }
-    o += snprintf(chunk + o, sizeof(chunk) - (size_t)o, "]");
-    httpd_resp_send_chunk(req, chunk, o);
-    free(s);
+    for (int c = 0; c <= ACQ_NCH; c++) wave_column(req, c, first, cnt);
     httpd_resp_send_chunk(req, "}", 1);
     return httpd_resp_send_chunk(req, NULL, 0);
 }

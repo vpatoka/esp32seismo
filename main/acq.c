@@ -6,8 +6,14 @@
  *
  * Timing budget at 1000 SPS: up to two SPI frames per DRDY (about 15 us
  * each at 8 MHz) plus two FIR dot products every tenth sample (2 x 201
- * int64 MACs). The task runs at priority 20, above lwIP, below the WiFi
- * driver; a 1 ms deadline per frame leaves a wide margin.
+ * int64 MACs). The task runs at priority 24, above the WiFi driver, so only
+ * ISRs and flash writes can make it late; the ADC FIFO gives it 2 ms.
+ *
+ * No console I/O while streaming: a log write can block on the USB
+ * Serial/JTAG port. Lines raised on the streaming path are formatted into
+ * a small ring here (note()) and printed by the timebase task
+ * (acq_log_drain()). Lines from reconfigure() go out directly: the stream
+ * is stopped there and the FIFO is emptied before it resumes.
  *
  * DRDY accounting: the ISR counts edges and stores the esp_timer time of
  * each one in a small ring indexed by that count. The task works from the
@@ -36,6 +42,8 @@
 #include "timebase.h"
 
 #include <math.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <string.h>
 #include "driver/gpio.h"
 #include "driver/ledc.h"
@@ -109,6 +117,59 @@ static uint32_t s_seq;                  /* next output seq; monotonic across res
 static uint32_t s_ring_fill;            /* slots written, saturates at s_ring_len */
 
 static bool s_ledc_on;
+
+/* ═════════════════════════════════════════════════════════════════════════
+ * Deferred log
+ * ═════════════════════════════════════════════════════════════════════════
+ * Single producer (the acq task), single consumer (acq_log_drain() on the
+ * timebase task). A full ring drops the new line and counts it; the
+ * consumer reports the count. Formatting costs a few tens of us, and only
+ * on rare events. */
+
+#define NOTE_N   8                      /* power of two */
+#define NOTE_LEN 120
+
+static char     s_note[NOTE_N][NOTE_LEN];
+static uint8_t  s_note_lvl[NOTE_N];
+static uint32_t s_note_w;               /* written by the producer only */
+static uint32_t s_note_r;               /* written by the consumer only */
+static uint32_t s_note_dropped;         /* producer */
+static uint32_t s_note_dropped_told;    /* consumer */
+
+static void __attribute__((format(printf, 2, 3))) note(esp_log_level_t lvl, const char *fmt, ...)
+{
+    uint32_t w = s_note_w;
+    if (w - __atomic_load_n(&s_note_r, __ATOMIC_ACQUIRE) >= NOTE_N) {
+        __atomic_store_n(&s_note_dropped, s_note_dropped + 1, __ATOMIC_RELEASE);
+        return;
+    }
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(s_note[w & (NOTE_N - 1)], NOTE_LEN, fmt, ap);
+    va_end(ap);
+    s_note_lvl[w & (NOTE_N - 1)] = (uint8_t)lvl;
+    __atomic_store_n(&s_note_w, w + 1, __ATOMIC_RELEASE);
+}
+
+void acq_log_drain(void)
+{
+    uint32_t r = s_note_r;
+    uint32_t w = __atomic_load_n(&s_note_w, __ATOMIC_ACQUIRE);
+    for (; r != w; r++) {
+        const char *s = s_note[r & (NOTE_N - 1)];
+        switch (s_note_lvl[r & (NOTE_N - 1)]) {
+            case ESP_LOG_ERROR: ESP_LOGE(TAG, "%s", s); break;
+            case ESP_LOG_WARN:  ESP_LOGW(TAG, "%s", s); break;
+            default:            ESP_LOGI(TAG, "%s", s); break;
+        }
+        __atomic_store_n(&s_note_r, r + 1, __ATOMIC_RELEASE);
+    }
+    uint32_t d = __atomic_load_n(&s_note_dropped, __ATOMIC_ACQUIRE);
+    if (d != s_note_dropped_told) {
+        ESP_LOGW(TAG, "%lu acquisition log lines dropped (log ring full)", (unsigned long)(d - s_note_dropped_told));
+        s_note_dropped_told = d;
+    }
+}
 
 /* ═════════════════════════════════════════════════════════════════════════
  * DRDY
@@ -506,35 +567,47 @@ static inline uint32_t ring_oldest(uint32_t head)
     return head - keep;                                            /* wraps correctly */
 }
 
-int acq_read_since(uint32_t since, acq_sample_t *out, int max, bool oldest_first,
-                   uint32_t *next_seq, uint32_t *pending)
+/* A reader streams its window in several passes (one per JSON array), so
+ * the writer must not reach the window's front while it does. Once the
+ * ring has wrapped, the oldest READ_GUARD samples are not handed out:
+ * 5 s at 100 SPS, far longer than a reply takes. */
+#define READ_GUARD 512
+
+int acq_read_window(uint32_t since, int max, bool oldest_first,
+                    uint32_t *first, uint32_t *next_seq, uint32_t *pending)
 {
-    if (pending) *pending = 0;
-    if (!s_ring || max <= 0) { if (next_seq) *next_seq = since; return 0; }
-    const uint32_t mask = s_ring_len - 1;
+    *pending = 0;
+    if (!s_ring || max <= 0) { *first = *next_seq = since; return 0; }
     uint32_t head = __atomic_load_n(&s_seq, __ATOMIC_ACQUIRE);
     uint32_t oldest = ring_oldest(head);
+    if (__atomic_load_n(&s_ring_fill, __ATOMIC_ACQUIRE) >= s_ring_len) {
+        oldest += s_ring_len / 4 < READ_GUARD ? s_ring_len / 4 : READ_GUARD;
+    }
     if ((int32_t)(since - oldest) < 0 || (int32_t)(since - head) > 0) since = oldest;
     uint32_t end = head;
     if (head - since > (uint32_t)max) {
         if (oldest_first) end = since + (uint32_t)max;     /* the backlog, in order */
         else since = head - (uint32_t)max;                 /* the newest max */
     }
-    int n = 0;
-    for (uint32_t s = since; s != end; s++) out[n++] = s_ring[s & mask];
+    *first = since;
+    *next_seq = end;
+    *pending = head - end;
+    return (int)(end - since);
+}
 
-    /* Anything the writer reached during the copy is gone: drop it from the front. */
+int acq_read_block(uint32_t first, acq_sample_t *out, int n)
+{
+    if (!s_ring || n <= 0) return n < 0 ? 0 : n;
+    const uint32_t mask = s_ring_len - 1;
+    for (int i = 0; i < n; i++) out[i] = s_ring[(first + (uint32_t)i) & mask];
+
+    /* Anything the writer reached during the copy is gone. The writer only
+     * ever overwrites the oldest slots, so the lost ones lead the block. */
     uint32_t valid = ring_oldest(__atomic_load_n(&s_seq, __ATOMIC_ACQUIRE));
-    int drop = 0;
-    while (drop < n && ((int32_t)(since + (uint32_t)drop - valid) < 0 ||
-                        out[drop].seq != since + (uint32_t)drop)) drop++;
-    if (drop) {
-        memmove(out, out + drop, sizeof(*out) * (size_t)(n - drop));
-        n -= drop;
-    }
-    if (next_seq) *next_seq = end;
-    if (pending) *pending = __atomic_load_n(&s_seq, __ATOMIC_ACQUIRE) - end;
-    return n;
+    int lost = 0;
+    while (lost < n && ((int32_t)(first + (uint32_t)lost - valid) < 0 ||
+                        out[lost].seq != first + (uint32_t)lost)) lost++;
+    return lost;
 }
 
 uint32_t acq_ring_len(void)
@@ -614,7 +687,7 @@ static void big_gap(uint32_t lost)
     portEXIT_CRITICAL(&s_mux);
     s_mute_out = (uint32_t)s_taps + ADS_SINC3_SETTLE;
     s_taint[0] = s_mute_out + (uint32_t)(s_set.decim ? s_set.decim : 1);   /* ACQ_F_GAP on the first output */
-    ESP_LOGW(TAG, "%lu input samples lost: FIR restarted", (unsigned long)lost);
+    note(ESP_LOG_WARN, "%lu input samples lost: FIR restarted", (unsigned long)lost);
 }
 
 /* Read what the ADC has for us. Returns false when it needs a reconfigure. */
@@ -645,14 +718,14 @@ static bool service_drdy(void)
 
         uint16_t st = ads_info()->status;
         if ((st & ADS_ST_RESET) || (st & ADS_ST_WLENGTH_MASK) != ADS_ST_WLENGTH_24) {
-            ESP_LOGE(TAG, "ADC STATUS 0x%04X: the converter restarted on its own, reconfiguring", st);
+            note(ESP_LOG_ERROR, "ADC STATUS 0x%04X: the converter restarted on its own, reconfiguring", st);
             s_st.status_events++;
             fault_raise(FAULT_ADC_STATUS);
             s_seen = s_drdy_cnt;
             return false;
         }
         if ((st & ADS_ST_F_RESYNC) && !s_sync_guard) {
-            ESP_LOGW(TAG, "ADC STATUS 0x%04X: resync without a SYNC from us, sample grid moved", st);
+            note(ESP_LOG_WARN, "ADC STATUS 0x%04X: resync without a SYNC from us, sample grid moved", st);
             s_st.status_events++;
             fault_raise(FAULT_ADC_STATUS);
             bump_epoch();
@@ -664,7 +737,7 @@ static bool service_drdy(void)
         } else if (s_bits_seen) {
             break;                             /* FIFO empty: the normal end of a pass */
         } else if (++s_bits_probe == BITS_PROBE_FRAMES) {
-            ESP_LOGW(TAG, "STATUS DRDY bits never set in %d frames: stale-frame check off", BITS_PROBE_FRAMES);
+            note(ESP_LOG_WARN, "STATUS DRDY bits never set in %d frames: stale-frame check off", BITS_PROBE_FRAMES);
         }
         portENTER_CRITICAL(&s_mux);
         s_st.adc_status = st;
@@ -733,14 +806,14 @@ static void rate_check(int64_t now)
     s_st.cap_bad_us = cbus;
     portEXIT_CRITICAL(&s_mux);
     if (bad && !s_rate_was_bad) {
-        ESP_LOGW(TAG, "DRDY rate %.1f/s against %.1f nominal: edges missed or counted twice", r, s_st.fs_in);
+        note(ESP_LOG_WARN, "DRDY rate %.1f/s against %.1f nominal: edges missed or counted twice", r, s_st.fs_in);
     } else if (!bad && s_rate_was_bad) {
-        ESP_LOGI(TAG, "DRDY rate back to nominal (%.1f/s)", r);
+        note(ESP_LOG_INFO, "DRDY rate back to nominal (%.1f/s)", r);
     }
     s_rate_was_bad = bad;
     if (cb != s_cap_bad_logged) {
-        ESP_LOGW(TAG, "%lu capture edge times failed the sanity check (last %ld us from the ISR time): "
-                 "used the ISR time for them", (unsigned long)(cb - s_cap_bad_logged), (long)cbus);
+        note(ESP_LOG_WARN, "%lu capture edge times failed the sanity check (last %ld us from the ISR time): "
+             "used the ISR time for them", (unsigned long)(cb - s_cap_bad_logged), (long)cbus);
         s_cap_bad_logged = cb;
     }
 }
@@ -824,14 +897,14 @@ static void handle_requests(void)
         s_sync_guard = SYNC_GUARD_FRAMES;
         s_skip_in = ADS_SINC3_SETTLE;
         bump_epoch();                          /* the sample grid moves */
-        ESP_LOGI(TAG, "SYNC pulse sent");
+        note(ESP_LOG_INFO, "SYNC pulse sent");
     }
     int ch = s_mux_ch;
     if (ch >= 0) {
         s_mux_ch = -1;
         /* DRDY keeps counting: the frames this costs show up as held samples. */
         esp_err_t err = ads_set_mux((uint8_t)ch, (ads_mux_t)s_mux_val, s_set.phase[ch]);
-        ESP_LOGI(TAG, "CH%d input mux -> %u (%s)", ch, s_mux_val, esp_err_to_name(err));
+        note(ESP_LOG_INFO, "CH%d input mux -> %u (%s)", ch, s_mux_val, esp_err_to_name(err));
     }
 }
 
@@ -860,7 +933,7 @@ static void acq_task(void *arg)
 
         if (s_drdy_cnt == s_seen) {            /* timeout or a control wakeup */
             if (now - s_last_evt >= NO_DRDY_US) {
-                if (s_st.clock_ok) ESP_LOGW(TAG, "No DRDY for 100 ms: CLKIN missing or the ADC lost power");
+                if (s_st.clock_ok) note(ESP_LOG_WARN, "No DRDY for 100 ms: CLKIN missing or the ADC lost power");
                 s_st.clock_ok = false;
                 if (now - s_last_evt >= RETRY_US && now - s_last_try >= RETRY_US) {
                     ok = reconfigure();
@@ -872,7 +945,7 @@ static void acq_task(void *arg)
         }
 
         s_last_evt = now;
-        if (!s_st.clock_ok) { s_st.clock_ok = true; ESP_LOGI(TAG, "DRDY running"); }
+        if (!s_st.clock_ok) { s_st.clock_ok = true; note(ESP_LOG_INFO, "DRDY running"); }
 
         if (!service_drdy()) {
             ok = reconfigure();

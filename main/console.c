@@ -27,7 +27,9 @@
 #include "esp_console.h"
 #include "linenoise/linenoise.h"
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "esp_netif.h"
+#include "sdkconfig.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
@@ -45,9 +47,25 @@ static int cmd_status(int argc, char **argv)
 
     printf("firmware   %s (%s %s), IDF %s, api %d\n",
            app->version, app->date, app->time, app->idf_ver, SEISMO_API_VERSION);
-    printf("uptime     %lld s, heap %lu free, %lu min\n",
-           (long long)(esp_timer_get_time() / 1000000),
-           (unsigned long)esp_get_free_heap_size(), (unsigned long)esp_get_minimum_free_heap_size());
+    seismo_hw_t hw;
+    seismo_hw_get(&hw);
+    printf("uptime     %lld s, reset %s\n", (long long)(esp_timer_get_time() / 1000000), hw.reset_reason);
+    printf("chip       ESP32-C5 v%u.%u, %u core, %lu MHz, flash %s, MAC " MACSTR "\n",
+           hw.chip_rev / 100, hw.chip_rev % 100, hw.cores, (unsigned long)hw.cpu_mhz,
+           CONFIG_ESPTOOLPY_FLASHSIZE, MAC2STR(hw.mac));
+    printf("internal   %lu KB free of %lu KB, lowest %lu KB, largest block %lu KB\n",
+           (unsigned long)(hw.int_free / 1024), (unsigned long)(hw.int_total / 1024),
+           (unsigned long)(hw.int_min / 1024), (unsigned long)(hw.int_largest / 1024));
+    if (hw.psram_total) {
+        printf("psram      %lu KB free of %lu KB, lowest %lu KB, largest block %lu KB\n",
+               (unsigned long)(hw.psram_free / 1024), (unsigned long)(hw.psram_total / 1024),
+               (unsigned long)(hw.psram_min / 1024), (unsigned long)(hw.psram_largest / 1024));
+    } else {
+        printf("psram      none\n");
+    }
+    printf("stack free acq %lu, timebase %lu, httpd %lu, tcpip %lu, wifi %lu bytes\n",
+           (unsigned long)hw.stack_acq, (unsigned long)hw.stack_timebase, (unsigned long)hw.stack_httpd,
+           (unsigned long)hw.stack_tcpip, (unsigned long)hw.stack_wifi);
     printf("station    %s.%s\n", g_config.network, g_config.station);
 
     printf("adc        %s, ID 0x%04X, clock %s, %lu Hz on CLKIN\n",
@@ -109,13 +127,17 @@ static int cmd_status(int argc, char **argv)
     if (g_wifi_mode == SEISMO_WIFI_AP_PROVISIONING) {
         printf("wifi       setup AP, portal http://192.168.4.1/portal\n");
     } else {
-        wifi_ap_record_t ap;
-        if (g_wifi_connected && esp_wifi_sta_get_ap_info(&ap) == ESP_OK) {
-            printf("wifi       %s, RSSI %d dBm, channel %d (%s GHz)\n", (const char *)ap.ssid, ap.rssi,
-                   ap.primary, ap.primary > 14 ? "5" : "2.4");
+        if (hw.wifi_up) {
+            printf("wifi       %s, RSSI %d dBm, channel %u (%s GHz), %s, AP " MACSTR "\n",
+                   g_config.wifi_ssid, hw.rssi, hw.channel, hw.channel > 14 ? "5" : "2.4", hw.phy,
+                   MAC2STR(hw.bssid));
         } else {
             printf("wifi       %s, not connected\n", g_config.wifi_ssid);
         }
+        printf("radio      TX power max %.1f dBm, %lu disconnects since boot",
+               (double)hw.tx_power_dbm, (unsigned long)hw.wifi_disconnects);
+        if (hw.wifi_disconnects) printf(" (last reason %u)", hw.wifi_last_reason);
+        printf("\n");
         printf("ip         %s\n", g_ip_address[0] ? g_ip_address : "(none)");
         printf("web        http://%s:%u/\n", g_ip_address[0] ? g_ip_address : g_config.hostname,
                g_config.http_port);

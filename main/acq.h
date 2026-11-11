@@ -109,6 +109,7 @@ typedef struct {
     int32_t  v[ACQ_NCH];
 } acq_sample_t;
 
+
 /**
  * @brief Create the task and start acquiring with s.
  * @param capture  edge timing for the whole run; ACQ_CAPTURE_MCPWM falls back
@@ -141,21 +142,40 @@ void acq_request_mux(uint8_t ch, uint8_t mux);   /* ads_mux_t, not persisted */
 void acq_get_status(acq_status_t *out);
 
 /**
- * @brief Copy samples from since_seq on, in seq order.
+ * @brief Pick the window of samples from since_seq on, in seq order.
  *
  * When more than max are waiting, oldest_first picks which max: false
- * returns the newest (live display, skips the backlog), true returns the
- * oldest still in the ring (recorder catching up, nothing skipped).
+ * gives the newest (live display, skips the backlog), true gives the
+ * oldest still served (recorder catching up, nothing skipped). Once the
+ * ring has wrapped, its oldest 512 samples are not served, so a reader
+ * has time to walk the window with acq_read_block().
  *
  * Lock-free: the acquisition task is the only writer and never waits on a
- * reader. Any number of readers; a sample the writer overwrote during the
- * copy is dropped from the front of the result, never returned torn.
+ * reader. Any number of readers.
+ * @param[out] first     seq of the first sample in the window
  * @param[out] next_seq  seq to ask for next time
- * @param[out] pending   samples newer than the last one returned (may be NULL)
- * @return number copied
+ * @param[out] pending   samples newer than the window
+ * @return number of samples in the window
  */
-int acq_read_since(uint32_t since_seq, acq_sample_t *out, int max, bool oldest_first,
-                   uint32_t *next_seq, uint32_t *pending);
+int acq_read_window(uint32_t since_seq, int max, bool oldest_first,
+                    uint32_t *first, uint32_t *next_seq, uint32_t *pending);
+
+/**
+ * @brief Copy n output samples starting at seq first (from acq_read_window).
+ *
+ * No allocation: a reader walks its window in small blocks. Returns how
+ * many leading entries the writer overwrote during the copy; those are not
+ * valid. 0 is the normal case.
+ */
+int acq_read_block(uint32_t first, acq_sample_t *out, int n);
+
+/**
+ * @brief Print the log lines the acquisition task queued.
+ *
+ * The acquisition task never writes the console while it streams. Called
+ * from the timebase task, at least once a second.
+ */
+void acq_log_drain(void);
 
 /** @brief Output samples the ring holds (ACQ_RING_LEN_PSRAM or ACQ_RING_LEN). */
 uint32_t acq_ring_len(void);
