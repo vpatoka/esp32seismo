@@ -34,6 +34,7 @@
 #include "esp_mac.h"
 #include "esp_netif.h"
 #include "esp_ota_ops.h"
+#include "esp_random.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
@@ -879,23 +880,36 @@ static esp_err_t api_wave_handler(httpd_req_t *req)
     if (max < 1) max = 1;
     if (max > WAVE_MAX) max = WAVE_MAX;
 
+    /* Output seq starts at 0 on every boot. A random id drawn on the first
+     * request (WiFi is up by then, so esp_random() is truly random) lets a
+     * recorder tell a reboot from a seq it simply missed. Only the httpd
+     * task gets here. */
+    static uint32_t s_boot;
+    while (!s_boot) s_boot = esp_random();
+
     uint32_t first = 0, next = 0, pending = 0;
     int cnt = acq_read_window(since, max, oldest, &first, &next, &pending);
 
-    /* The header carries the first sample's time. One already overwritten
-     * is dropped from the front, as before. */
-    acq_sample_t s0 = { 0 };
-    while (cnt > 0 && acq_read_block(first, &s0, 1) != 0) { first++; cnt--; }
-    acq_status_t st;
-    acq_get_status(&st);
+    /* One unbroken run only, so t0 + i / fs holds for every sample sent.
+     * Oldest first stops at the first break and the rest is pending; newest
+     * keeps the run that ends the window, and the page sees the seq jump. */
+    uint32_t end = first + (uint32_t)cnt;
+    acq_run_t run;
+    acq_window_run(&first, &cnt, !oldest, &run);
+    if (oldest) {
+        next = first + (uint32_t)cnt;
+        pending += end - next;
+    }
 
     set_json_headers(req);
-    char line[160];
+    char line[256];
     snprintf(line, sizeof(line),
-             "{\"ok\":true,\"next\":%lu,\"seq0\":%lu,\"n\":%d,\"pending\":%lu,\"fs\":%.4f,\"t0\":%lld,\"tq\":\"%s\"",
+             "{\"ok\":true,\"next\":%lu,\"seq0\":%lu,\"n\":%d,\"pending\":%lu,\"fs\":%.4f,\"t0\":%lld,\"tq\":\"%s\","
+             "\"t0_us\":%lld,\"epoch\":%u,\"boot\":%lu",
              (unsigned long)next, (unsigned long)(cnt ? first : next), cnt, (unsigned long)pending,
-             st.fs_out, (long long)(cnt ? s0.utc_us / 1000 : 0),
-             timebase_tq_name(cnt ? (tb_tq_t)s0.tq : TB_TQ_NONE));
+             run.fs, (long long)(cnt ? run.t0_us / 1000 : 0),
+             timebase_tq_name(cnt ? (tb_tq_t)run.tq : TB_TQ_NONE),
+             (long long)(cnt ? run.t0_us : 0), (unsigned)run.epoch, (unsigned long)s_boot);
     httpd_resp_send_chunk(req, line, HTTPD_RESP_USE_STRLEN);
 
     for (int c = 0; c <= ACQ_NCH; c++) wave_column(req, c, first, cnt);

@@ -109,12 +109,20 @@ The top-level `heap` and `heap_min` stay as they were: internal RAM and PSRAM ad
 ```
 curl 'http://vseismo/api/wave?since=0&max=5'
 {"ok":true,"next":1234,"seq0":1229,"n":5,"pending":0,"fs":100.0000,"t0":1794240527736,"tq":"pps",
+ "t0_us":1794240527736412,"epoch":3,"boot":2840193377,
  "ch0":[12,-3,8,1,-6],"ch1":[40,38,41,44,39],"flags":[0,0,0,1,1]}
 ```
 
 - Values are ADC counts after the decimating FIR, 24-bit scale.
-- `t0` is the UTC time of the first sample in ms. It's 0 until the station has wall-clock time.
-- `tq` is the time quality of that first sample: `pps`, `ntp`, `rtc` or `none` (see /api/status: time). Following samples are `t0 + i / fs` to well within a sample period. Exactly so with `pps`; with `ntp` the slewed sample clock and DRDY interrupt jitter (tens of µs) add to that.
+- `t0` is the UTC time of the first sample in ms, `t0_us` the same in µs. Both are 0 until the station has wall-clock time. A recorder should use `t0_us`: with `pps` the timestamps are µs-grade, and `t0` truncates them.
+- `fs` is the output rate of the samples in this reply. After a settings change, a catch-up read of older samples reports their rate, not the current one (for samples from the last 16 restarts; older ones get the current rate).
+- `tq` is the time quality of the samples: `pps`, `ntp`, `rtc` or `none` (see /api/status: time). It is the same for every sample in a reply.
+- One reply is one unbroken run: every sample is `t0_us + i / fs` to well within a sample period. Exactly so with `pps`; with `ntp` the slewed sample clock and DRDY interrupt jitter (tens of µs) add to that. A reply ends early, rather than span a break, where:
+  - `epoch` changes: an acquisition restart (settings change, ADC reset), a SYNC, an ADC resync, or a gap too long to hold. The time grid moved, and `seq` alone doesn't show it.
+  - `tq` changes, including the first wall-clock time arriving.
+  - two neighbouring samples aren't one period apart to within half a period: a sample-clock step (a leap second, a bad RTC seed corrected).
+- `epoch` is 0..65535 and wraps. Compare it for equality only. A recorder starts a new segment (a new miniSEED record) when it changes.
+- `boot` is a random nonzero number drawn after each boot. `seq` starts at 0 on every boot, so a changed `boot` means a reboot and the old `next` no longer applies. Resume from `since=0`, which returns the oldest samples held.
 - Timestamps are corrected for the full group delay (ADC sinc3, 1.5 input periods, plus the FIR, (taps − 1) / 2 input periods), so they mark when the ground moved.
 - `flags` has one entry per sample. A bit is set when the FIR window of that sample held an input of that kind. A flagged sample is still on the correct time grid, but its value is not a clean measurement.
 
@@ -130,8 +138,8 @@ curl 'http://vseismo/api/wave?since=0&max=5'
 - The station keeps the last `ring_len` output samples (see `/api/acq`): 131072 with PSRAM, about 22 minutes at 100 SPS, or 4096 (41 s) on a board without it. Once the ring has wrapped, its oldest 512 samples are not served. The reply is streamed from the ring in small blocks, and this keeps the writer away from the samples being sent.
 - If a sample is overwritten while its reply is still going out (only on a connection stalled for seconds), it's sent as the previous value with flag bit 0 set.
 - One reply carries at most `max` samples. `order` picks which ones when more are waiting:
-  - `order=newest` (the default): the newest `max`. The rest are skipped, which suits a live display.
-  - `order=oldest`: the oldest `max` the ring still holds, in order. Nothing is skipped. `pending` says how many newer samples follow, so a recorder polls again at once while `pending` is above 0. After an outage it can catch up on the whole ring, up to 22 minutes at 100 SPS, in steps of `max`.
+  - `order=newest` (the default): the newest `max`, cut back to the run that ends them. The rest are skipped, which suits a live display.
+  - `order=oldest`: the oldest `max` the ring still holds, in order, up to the first break. Nothing is skipped. `pending` says how many newer samples follow, so a recorder polls again at once while `pending` is above 0. After an outage it can catch up on the whole ring, up to 22 minutes at 100 SPS, in steps of `max`.
 - `pending` is the number of samples newer than the last one returned. With `order=newest` it is normally 0.
 - Any other `order` value is an error.
 

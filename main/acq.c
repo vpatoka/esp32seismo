@@ -116,6 +116,13 @@ static uint32_t s_ring_len;             /* power of two */
 static uint32_t s_seq;                  /* next output seq; monotonic across restarts */
 static uint32_t s_ring_fill;            /* slots written, saturates at s_ring_len */
 
+/* Output rate from each restart's epoch on, so a reader catching up on
+ * samples from before a settings change reports their rate, not today's.
+ * Written in reconfigure(), read by acq_window_run(), both under s_mux. */
+#define FS_TAB_N 16
+static struct { uint16_t epoch; double fs; } s_fs_tab[FS_TAB_N];
+static uint32_t s_fs_n;
+
 static bool s_ledc_on;
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -554,6 +561,7 @@ static void ring_push(double pos, int64_t t_esp, const int32_t *v, uint8_t flags
     slot->flags = flags;
     slot->utc_us = timebase_sample_utc_us(s_epoch, pos, t_esp, &tq);
     slot->tq = (uint8_t)tq;
+    slot->epoch = (uint16_t)s_epoch;                   /* only this task changes it */
     memcpy(slot->v, v, sizeof(slot->v));
     if (s_ring_fill < s_ring_len) __atomic_store_n(&s_ring_fill, s_ring_fill + 1, __ATOMIC_RELEASE);
     __atomic_store_n(&s_seq, seq + 1, __ATOMIC_RELEASE);
@@ -608,6 +616,75 @@ int acq_read_block(uint32_t first, acq_sample_t *out, int n)
     while (lost < n && ((int32_t)(first + (uint32_t)lost - valid) < 0 ||
                         out[lost].seq != first + (uint32_t)lost)) lost++;
     return lost;
+}
+
+/* Rate of epoch e's samples: set by the newest restart at or before e.
+ * Epochs also move on a SYNC, a resync or a long gap, which keep the rate.
+ * A window older than the table (16 restarts in the ring's span) gets the
+ * current rate. */
+static double epoch_fs(uint16_t e)
+{
+    double fs = 0;
+    int best = 1 << 16;
+    portENTER_CRITICAL(&s_mux);
+    uint32_t n = s_fs_n < FS_TAB_N ? s_fs_n : FS_TAB_N;
+    for (uint32_t i = 0; i < n; i++) {
+        int d = (int16_t)(uint16_t)(e - s_fs_tab[i].epoch);
+        if (d >= 0 && d < best) { best = d; fs = s_fs_tab[i].fs; }
+    }
+    if (fs <= 0) fs = s_st.fs_out;
+    portEXIT_CRITICAL(&s_mux);
+    return fs;
+}
+
+/* b does not follow a on one time grid. */
+static bool run_breaks(const acq_sample_t *a, const acq_sample_t *b, int64_t period_us)
+{
+    if (a->epoch != b->epoch || a->tq != b->tq) return true;
+    if ((a->utc_us == 0) != (b->utc_us == 0)) return true;
+    if (a->utc_us == 0 || period_us <= 0) return false;
+    int64_t d = b->utc_us - a->utc_us - period_us;
+    return d > period_us / 2 || d < -period_us / 2;
+}
+
+#define RUN_BLK 32              /* samples per ring copy, on the caller's stack */
+
+int acq_window_run(uint32_t *first, int *cnt, bool keep_newest, acq_run_t *run)
+{
+    acq_sample_t blk[RUN_BLK], prev = { 0 };
+    const int n = *cnt;
+    int start = 0, end = n;
+    int64_t period_us = 0;
+    bool have = false;
+
+    memset(run, 0, sizeof(*run));
+    for (int off = 0; off < n && end == n; off += RUN_BLK) {
+        int k = n - off < RUN_BLK ? n - off : RUN_BLK;
+        int lost = acq_read_block(*first + (uint32_t)off, blk, k);
+        for (int i = lost; i < k; i++) {
+            const acq_sample_t *s = &blk[i];
+            if (!have || run_breaks(&prev, s, period_us)) {
+                if (have && !keep_newest) { end = off + i; break; }
+                start = off + i;
+                run->epoch = s->epoch;
+                run->tq = s->tq;
+                run->t0_us = s->utc_us;
+                run->fs = epoch_fs(s->epoch);
+                period_us = run->fs > 0 ? (int64_t)llround(1e6 / run->fs) : 0;
+                have = true;
+            }
+            prev = *s;
+        }
+    }
+    if (!have) {                        /* nothing readable: leave the window as it is */
+        run->fs = epoch_fs((uint16_t)s_epoch);
+        run->epoch = (uint16_t)s_epoch;
+        run->tq = TB_TQ_NONE;
+        return 0;
+    }
+    *first += (uint32_t)start;
+    *cnt = end - start;
+    return n - *cnt;
 }
 
 uint32_t acq_ring_len(void)
@@ -877,6 +954,11 @@ static bool reconfigure(void)
     s_n_in = 0;
     s_last_t = 0;
     s_epoch++;
+    if (ok) {                           /* a failed probe outputs nothing; keep the table for real runs */
+        s_fs_tab[s_fs_n % FS_TAB_N].epoch = (uint16_t)s_epoch;
+        s_fs_tab[s_fs_n % FS_TAB_N].fs = fs_in / decim;
+        s_fs_n++;
+    }
     portEXIT_CRITICAL(&s_mux);
     stats_reset((uint32_t)lround(fs_in / decim));
 

@@ -105,10 +105,18 @@ typedef struct {
     uint32_t seq;
     uint8_t  flags;           /* ACQ_F_* */
     uint8_t  tq;              /* tb_tq_t: how utc_us was obtained */
+    uint16_t epoch;           /* low bits of the time-grid epoch; sits in what was padding */
     int64_t  utc_us;          /* 0 when no wall-clock time yet */
     int32_t  v[ACQ_NCH];
 } acq_sample_t;
 
+/* One unbroken run of output samples, from acq_window_run(). */
+typedef struct {
+    double   fs;              /* output rate of these samples, SPS */
+    int64_t  t0_us;           /* UTC of the first one, 0 when no wall-clock time */
+    uint16_t epoch;
+    uint8_t  tq;              /* tb_tq_t of every sample in the run */
+} acq_run_t;
 
 /**
  * @brief Create the task and start acquiring with s.
@@ -168,6 +176,21 @@ int acq_read_window(uint32_t since_seq, int max, bool oldest_first,
  * valid. 0 is the normal case.
  */
 int acq_read_block(uint32_t first, acq_sample_t *out, int n);
+
+/**
+ * @brief Trim a window to one unbroken run, so t0 + i / fs holds across it.
+ *
+ * A run ends where the epoch changes (restart, SYNC, resync, long gap), the
+ * time quality changes, or two neighbours are not one sample period apart
+ * to within half a period (a sample-clock step). keep_newest keeps the run
+ * that ends the window (live display), otherwise the one that starts it
+ * (recorder: the rest follows on the next read). Leading samples the writer
+ * already overwrote are dropped too.
+ * @param[in,out] first, cnt  the window from acq_read_window, trimmed in place
+ * @param[out]    run         rate, first timestamp, epoch and tq of the run
+ * @return samples dropped
+ */
+int acq_window_run(uint32_t *first, int *cnt, bool keep_newest, acq_run_t *run);
 
 /**
  * @brief Print the log lines the acquisition task queued.
