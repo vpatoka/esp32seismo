@@ -6,7 +6,7 @@
  *
  * One task owns the SPI bus. The DRDY ISR timestamps the edge and wakes it;
  * the task reads one frame, runs the decimating FIR and publishes output
- * samples into a ring that the web API and (later) the PSN stream read.
+ * samples into a ring that the web API reads (the page and the gateway).
  *
  * An output sample stands for input-sample position n - D, where n is the
  * input count at its newest input and D the total group delay in input

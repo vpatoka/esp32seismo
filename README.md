@@ -72,7 +72,7 @@ The infrastructure (WiFi on 2.4 and 5 GHz, captive portal, OTA with rollback, US
 | 1 | ADS131M02 driver, acquisition, FIR decimation, timing, tuning page, portal, OTA, console | built, not yet on hardware |
 | 1b | Timing: PPS rate fit, sample-count timestamps, slewed SNTP clock, MCPWM edge capture (opt-in), PSRAM ring | built, host-simulated, not yet on hardware |
 | Bench | Pins, CLKIN modification, shorted-input floor, offset trim sign, CRC check, [timing checks](#bench-checks-for-timing) | next |
-| 2 | PSN-ADC24 serial protocol on UART0, so WinSDR sees a PSN board | |
+| 2 | Gateway: `/api/wave` into miniSEED, SDS archive and SeedLink ([`nas/`](nas/README.md)); public relay ([`relay/`](relay/README.md)) | built, tested in containers, not yet deployed |
 | 3 | Minimum-phase FIR, GPS NMEA if needed, channel phase match, enclosure | |
 
 ## Features
@@ -122,7 +122,7 @@ ESP32-C5-DevKitC-1-N8R8: single-core RISC-V, 8 MB flash, 8 MB PSRAM.
 | RGB LED / BOOT button | 27 / 28 | on board |
 
 - Never touched: 13/14 (USB JTAG), 15 (PSRAM CS) and 16 to 22 (flash and PSRAM).
-- GPIO 11/12 (UART0, the DevKit's second USB port) are kept for the WinSDR stream.
+- GPIO 11/12 (UART0, the DevKit's second USB port) are left free. Data leaves over WiFi through `/api/wave`.
 - DS3231 SQW: on the common breakout modules SQW sits right next to 32K. Wired to the wrong pin, the log says `No SQW edge on GPIO23 5 s after start`. `ref=rtc` drives the DS3231 even with `rtc=0`, since its SQW only runs once configured. The DS3231's seconds roll over on the falling SQW edge; the rate fit works on either edge, so `ref_edge` only matters when comparing phases on a scope.
 - The map follows the esp32nixie pin audit. Check it against the DevKitC-1 pinout before the first power-up.
 
@@ -349,6 +349,8 @@ curl --data-binary @vseismo.cfg http://vseismo/api/config/import
 | `main/io_map.h` | Pins, priorities, constants |
 | `main/www/` | Tuning page and portal page |
 | `doc/API.md` | HTTP API contract |
+| `nas/` | Gateway: bridge from `/api/wave` to miniSEED, ringserver, SeedLink forwarding (Docker Compose) |
+| `relay/` | Public SeedLink relay on an OpenBSD VPS: ringserver, pf, restricted tunnel user |
 | `partitions.csv` | Dual-slot OTA layout |
 | `hardware/carrier/` | Carrier board rev A: generator, schematic and placement drawings, KiCad netlist |
 
@@ -356,7 +358,8 @@ curl --data-binary @vseismo.cfg http://vseismo/api/config/import
 
 - **Bench bring-up:** pins, CLKIN modification, noise floor with shorted inputs, offset trim sign, CRC coverage, the [timing checks](#bench-checks-for-timing)
 - **Edge capture:** make `capture=mcpwm` the default once it passes the bench
-- **WinSDR:** the PSN-ADC24 packet format on UART0
+- **Gateway:** deploy [`nas/`](nas/README.md), then the [`relay/`](relay/README.md) or a public network that takes the feed
+- **GPS PPS:** a module on GPIO23, for `pps` time quality and "clock locked" in the miniSEED headers
 - **Filters:** a minimum-phase FIR option for sharper P-wave onsets
 - **Phase match:** between the two amplifier channels, measured with one test tone into both
 - **Timing:** GPS NMEA, only if PPS plus SNTP proves not enough

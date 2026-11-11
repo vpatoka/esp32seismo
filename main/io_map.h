@@ -12,8 +12,8 @@
  *   GPIO13/14   USB Serial/JTAG (console, flashing)
  *   GPIO15      SPICS1, wired to the PSRAM on the N8R8 module
  *   GPIO16-22   in-package flash / PSRAM
- *   GPIO11/12   UART0 on the DevKit's USB-to-UART port, kept for the
- *               WinSDR / PSN-ADC24 data stream (phase 2)
+ *   GPIO11/12   UART0 on the DevKit's USB-to-UART port, left free (data
+ *               leaves over WiFi through /api/wave)
  *
  * Strapping pins (union of DevKitC-1 v1.0 and v1.2): 2, 3, 7, 25, 26, 27,
  * 28. GPIO7 carries the optional LEDC clock to ADS131M02 CLKIN. CLKIN is a

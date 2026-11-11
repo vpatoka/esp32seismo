@@ -600,7 +600,7 @@ The simulation found three faults before they reached hardware, all fixed in the
 | Master clock | External 8.192 MHz oscillator | Independent of the processor; TCXO only if holdover without PPS matters |
 | Power mode | High resolution | |
 | Converter rate | OSR 4096, 1000 SPS | Room for the FIR transition above 50 Hz, negligible sinc³ droop |
-| Output | FIR decimation by 10 to 100 SPS, 201 taps | PSN / WinSDR rate; noise equal to OSR 8192 / 5 |
+| Output | FIR decimation by 10 to 100 SPS, 201 taps | Common short-period rate (PSN, Earthworm); noise equal to OSR 8192 / 5 |
 | Rate limits | OSR ≥ 512, decimation ≤ 18 | One task wake per sample; a 255-tap FIR |
 | Sample accounting | Count every DRDY, hold and flag bad inputs | Keeps the grid and the rate measurement exact |
 | Rate measurement | Least-squares fit over 300 PPS edges | 100 times less noise than differencing |
