@@ -73,3 +73,8 @@ Thumbs.db
 *.kiro
 .env.local
 .env.*.local
+
+# StationXML: the real site file holds coordinates, keep it out
+site.yaml
+*.VSEIS.xml
+*.VSEIS.png
