@@ -65,6 +65,8 @@ sudo chown -R 10000:10000 "$D"
 docker compose up -d --build
 ```
 
+Your user must be in the `docker` group (`sudo usermod -aG docker $USER`, then log in again). Without it, `docker compose` stops with `permission denied while trying to connect to the docker API at unix:///var/run/docker.sock`.
+
 The bridge image runs its unit tests while it builds, so a broken build never starts. After a change to `RingSize` in `ringserver/ring.conf`, ringserver rebuilds the ring on its next start and carries over the packets that fit.
 
 To publish SeedLink, forward TCP 18000 on the router to `LAN_ADDR:18000`. Only SeedLink listens there (no DataLink, no HTTP), and only the bridge may write. Once you know the receiving network's collector addresses, limit the forward to them. A box that's reachable from the internet is better on its own router interface or VLAN, with access only to the station's port 80.
@@ -83,6 +85,36 @@ ls "$D"/sds/$(date +%Y)/XX/VSEIS/
 ```
 
 Live view on any LAN machine: Swarm, or ObsPy `seedlink` client, at `192.168.1.20:18000`, station `XX.VSEIS`.
+
+### A first start
+
+On a 4-core Atom x5-Z8350 with 4 GB and eMMC (a fanless mini PC on Debian 13), the first `docker compose up -d --build` took about 90 s: 14 s pulling `ringserver` and `busybox`, 70 s building the bridge (base image 19 s, pymseed 16 s, tests 3 s, export 24 s). Later starts take seconds.
+
+```
+$ docker compose up -d --build
+ ✔ Image earthscope/ringserver:4.5.6 Pulled
+ ✔ Image busybox:1.37.0              Pulled
+ => [7/7] RUN PYTHONDONTWRITEBYTECODE=1 python -m unittest -q test_bridge     3.3s
+ ✔ Image vseismo/bridge:local        Built
+ ✔ Network vseismo_seismo            Created
+ ✔ Container vseismo-sds-prune-1     Started
+ ✔ Container vseismo-ringserver-1    Started
+ ✔ Container vseismo-bridge-1        Started
+
+$ docker compose logs bridge ringserver
+ringserver-1  | ... - ringserver version: 4.5.6
+ringserver-1  | ... - Creating new ring packet buffer file
+ringserver-1  | ... -    ringsize: 536870912 (512.0 MiB), pktsize: 632 (512 payload)
+ringserver-1  | ... -    server ID: vseismo gateway
+ringserver-1  | ... - Listening for connections on port 18000 (IPv4: SeedLink)
+ringserver-1  | ... - Listening for connections on port 16000 (IPv4: DataLink)
+bridge-1      | ... INFO bridge: bridge: http://192.168.1.50 -> ringserver:16000 as XX_VSEIS_00_EHZ/MSEED,XX_VSEIS_00_EH1/MSEED, since seq 0 (boot None)
+
+$ curl -s http://192.168.1.20:9108/metrics | grep -E 'records_sent|gap|pending'
+vseismo_station_pending 0
+```
+
+That last output is from a station whose acquisition wasn't running yet: the bridge is up and polling, but there are no samples, so there are no record counters yet. Once the station streams, `vseismo_records_sent_total` appears and grows by about one record per channel every few seconds, a DataLink `Client connected` line from the bridge shows in the ringserver log, and day files appear under `$D/sds/`. If `pending` stays above 0, the bridge is still catching up on the station's backlog.
 
 ## Metrics (`:9108/metrics`)
 
