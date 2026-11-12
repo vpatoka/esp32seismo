@@ -43,6 +43,60 @@ Run `zero` on the shorted ADC input, not on the amplifier signal. Otherwise OCAL
 
 Disconnect the geophones for all of this. A connected geophone is part of the input network and records the bench being bumped.
 
+## Plain English walkthrough (with a generator)
+
+The short version of Steps B and C. Do Step A (ADC zero) once beforehand. One channel at a time.
+
+### Before you start
+
+- Unplug the geophones from the amplifier.
+- Power everything on and let it warm up for 5 minutes.
+- Open the station's web page so you can see the numbers.
+
+### 1. Build a small divider
+
+The generator can't make a signal small enough on its own, so two resistors shrink it about 1000 times:
+
+- a 100k resistor from the generator output to the amplifier input
+- a 100 ohm resistor from the amplifier input to ground
+
+1 volt from the generator becomes about 1 millivolt at the amplifier, roughly what a geophone produces.
+
+### 2. Set the generator
+
+1. Sine wave, 50 Hz.
+2. Multimeter on AC volts across the generator output (before the resistors). Turn the amplitude until it reads 1.000 V.
+3. Change the frequency to 1 Hz. Leave the amplitude alone.
+
+A multimeter can't read a 1 Hz signal properly, so set the level where the meter is accurate, then change the frequency. The generator keeps the same level.
+
+### 3. Set the gain
+
+1. Turn the Gain trimmer (near the LT1007) all the way counter-clockwise. That's the lowest gain.
+2. Watch "mV at the amplifier" for that channel on the web page.
+3. Turn the Gain trimmer slowly clockwise until it reads about 989 mV. That's a gain of 1000.
+4. Let it sit for a few seconds and note the average reading.
+
+### 4. Tell the station the gain
+
+Divide the reading by 0.989. If the page settles at 1003 mV, the gain is 1003 / 0.989 = 1014. Enter it as the channel's gain in the settings panel: `ch0_amp` for the vertical, `ch1_amp` for the horizontal.
+
+### 5. Set the offset
+
+1. Disconnect the generator and short the amplifier input to ground with a wire.
+2. Wait 2 to 3 minutes. The amplifier needs that long to settle after the gain trimmer moved.
+3. Multimeter on DC volts at the channel output. Turn the Offset trimmer (near the NE5534) until it reads close to 0, within 5 millivolts either way.
+
+### 6. Other channel, then write it down
+
+Repeat for the second channel and keep a record: trimmer position, reading, gain, offset, date and temperature.
+
+### Rules to remember
+
+- Gain first, then offset. Moving the gain trimmer upsets the offset for a couple of minutes.
+- Touched a trimmer later? Measure again and update the station's gain number.
+- Every gain number change means a new StationXML file.
+
 ## Step A: ADC zero
 
 Per channel, N = 0 and 1:
