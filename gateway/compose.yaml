@@ -1,4 +1,4 @@
-# vseismo gateway: a NAS (QNAP Container Station) or a small PC. See README.md.
+# vseismo gateway: any small Linux box with Docker. See README.md.
 #
 #   station --HTTP pull--> bridge --DataLink--> ringserver --SeedLink :18000--> clients
 #                                               (ring, SDS)

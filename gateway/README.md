@@ -1,13 +1,13 @@
 # vseismo gateway
 
-Docker Compose stack that turns the station's HTTP API into a standard SeedLink stream and keeps a miniSEED archive. It runs on a NAS (QNAP Container Station) or on any small amd64 or arm64 Linux box. The bridge always opens the connection to the station; the station never connects out.
+Docker Compose stack that turns the station's HTTP API into a standard SeedLink stream and keeps a miniSEED archive. It runs on any small amd64 or arm64 Linux box with Docker; the reference setup is a fanless mini PC on Debian 13. The bridge always opens the connection to the station; the station never connects out.
 
 There are two ways to get the stream to the outside:
 
 | Mode | Services | Who connects to what |
 |---|---|---|
 | Gateway (default) | `bridge`, `ringserver`, `sds-prune` | Clients connect to this host's SeedLink port, through a router port forward if they're on the internet |
-| Relay (`COMPOSE_PROFILES=relay`) | the above plus `slink2dali`, `autossh` | This host tunnels out to a VPS (see `../relay/`), and clients connect there. Nothing on the internet connects in |
+| Relay (`COMPOSE_PROFILES=relay`) | the above plus `slink2dali`, `autossh` | This host tunnels out to a VPS (see [`../examples/`](../examples/README.md)), and clients connect there. Nothing on the internet connects in |
 
 ```
 station 192.168.1.50 ──HTTP pull──► bridge ──DataLink──► ringserver ──SeedLink :18000──► LAN viewers
@@ -54,12 +54,10 @@ Bench tests are archived and streamed, but marked: receivers that honour the cal
 
 ## Install
 
-### Gateway mode
-
-On a Debian (or similar) box with Docker and the compose plugin, or a QNAP with Container Station 3:
+On a Debian (or similar) box with Docker and the compose plugin:
 
 ```sh
-git clone https://github.com/vpatoka/esp32seismo.git && cd esp32seismo/nas
+git clone https://github.com/vpatoka/esp32seismo.git && cd esp32seismo/gateway
 cp .env.example .env      # edit: DATA_ROOT, LAN_ADDR, VSEISMO_URL, SEED codes; leave COMPOSE_PROFILES empty
 D=$(grep ^DATA_ROOT .env | cut -d= -f2)
 sudo mkdir -p "$D"/ring "$D"/sds "$D"/bridge
@@ -67,28 +65,13 @@ sudo chown -R 10000:10000 "$D"
 docker compose up -d --build
 ```
 
+The bridge image runs its unit tests while it builds, so a broken build never starts. After a change to `RingSize` in `ringserver/ring.conf`, ringserver rebuilds the ring on its next start and carries over the packets that fit.
+
 To publish SeedLink, forward TCP 18000 on the router to `LAN_ADDR:18000`. Only SeedLink listens there (no DataLink, no HTTP), and only the bridge may write. Once you know the receiving network's collector addresses, limit the forward to them. A box that's reachable from the internet is better on its own router interface or VLAN, with access only to the station's port 80.
 
 ### Relay mode
 
-As above, plus the tunnel key. Set `COMPOSE_PROFILES=relay` and the `RELAY_*` values in `.env` first:
-
-```sh
-sudo mkdir -p "$D"/slink2dali "$D"/ssh
-
-# Tunnel key, used only for the relay forward (see relay/README.md, step 4)
-ssh-keygen -t ed25519 -N '' -C vseismo-gw -f "$D"/ssh/id_ed25519
-ssh-keyscan -t ed25519 relay.example.org > "$D"/ssh/known_hosts
-ssh-keygen -lf "$D"/ssh/known_hosts       # compare with the fingerprint on the VPS itself
-
-sudo chown -R 10000:10000 "$D"
-sudo chmod 600 "$D"/ssh/id_ed25519
-docker compose up -d --build
-```
-
-On the QNAP, run the same commands as admin over SSH, without `sudo`, with `DATA_ROOT` under `/share/Container`.
-
-The bridge image runs its unit tests while it builds, so a broken build never starts. After a change to `RingSize` in `ringserver/ring.conf`, ringserver rebuilds the ring on its next start and carries over the packets that fit.
+If nothing may connect into your network, set `COMPOSE_PROFILES=relay` and the `RELAY_*` values in `.env`: the stack then also tunnels the stream out to a VPS that serves it. [`../examples/qnap-relay/`](../examples/qnap-relay/README.md) walks through it on a NAS, and [`../examples/vps-relay/`](../examples/vps-relay/README.md) sets up the VPS end.
 
 ## Check
 

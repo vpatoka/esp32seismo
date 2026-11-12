@@ -72,7 +72,7 @@ The infrastructure (WiFi on 2.4 and 5 GHz, captive portal, OTA with rollback, US
 | 1 | ADS131M02 driver, acquisition, FIR decimation, timing, tuning page, portal, OTA, console | built, not yet on hardware |
 | 1b | Timing: PPS rate fit, sample-count timestamps, slewed SNTP clock, MCPWM edge capture (opt-in), PSRAM ring | built, host-simulated, not yet on hardware |
 | Bench | Pins, CLKIN modification, shorted-input floor, offset trim sign, CRC check, [timing checks](#bench-checks-for-timing) | next |
-| 2 | Gateway: `/api/wave` into miniSEED, SDS archive and SeedLink ([`nas/`](nas/README.md)); public relay ([`relay/`](relay/README.md)) | built, tested in containers, not yet deployed |
+| 2 | Gateway: `/api/wave` into miniSEED, SDS archive and SeedLink on a small Debian box ([`gateway/`](gateway/README.md)); relay variants in [`examples/`](examples/README.md) | built, tested in containers, gateway box installed |
 | 3 | Minimum-phase FIR, GPS NMEA if needed, channel phase match, enclosure | |
 
 ## Features
@@ -349,8 +349,8 @@ curl --data-binary @vseismo.cfg http://vseismo/api/config/import
 | `main/io_map.h` | Pins, priorities, constants |
 | `main/www/` | Tuning page and portal page |
 | `doc/API.md` | HTTP API contract |
-| `nas/` | Gateway: bridge from `/api/wave` to miniSEED, ringserver, SeedLink forwarding (Docker Compose) |
-| `relay/` | Public SeedLink relay on an OpenBSD VPS: ringserver, pf, restricted tunnel user |
+| `gateway/` | Gateway: bridge from `/api/wave` to miniSEED, ringserver, SDS archive, SeedLink (Docker Compose) |
+| `examples/` | Other setups: the gateway on a QNAP NAS in relay mode, and the public relay on an OpenBSD VPS |
 | `partitions.csv` | Dual-slot OTA layout |
 | `hardware/carrier/` | Carrier board rev A: generator, schematic and placement drawings, KiCad netlist |
 
@@ -358,7 +358,7 @@ curl --data-binary @vseismo.cfg http://vseismo/api/config/import
 
 - **Bench bring-up:** pins, CLKIN modification, noise floor with shorted inputs, offset trim sign, CRC coverage, the [timing checks](#bench-checks-for-timing)
 - **Edge capture:** make `capture=mcpwm` the default once it passes the bench
-- **Gateway:** deploy [`nas/`](nas/README.md), then the [`relay/`](relay/README.md) or a public network that takes the feed
+- **Gateway:** deploy [`gateway/`](gateway/README.md), open the SeedLink port forward, and join a public network that takes the feed
 - **GPS PPS:** a module on GPIO23, for `pps` time quality and "clock locked" in the miniSEED headers
 - **Filters:** a minimum-phase FIR option for sharper P-wave onsets
 - **Phase match:** between the two amplifier channels, measured with one test tone into both
