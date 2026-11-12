@@ -41,7 +41,7 @@ wrote XX.VSEIS.xml
 wrote XX.VSEIS.png
 ```
 
-The script refuses to run while `chN_amp` or `chN_sens` is 0 on the station, because the file would claim a sensitivity nobody measured. `--draft` uses the site file's `gain_nominal` and `sensitivity_nominal` instead and marks the station "DRAFT" in the file. That's fine for checking the shape, but don't publish it.
+The script refuses to run while `chN_amp` or `chN_sens` is 0 on the station, because the file would claim a sensitivity nobody measured. `--draft` uses the site file's `gain_nominal` and `sensitivity_nominal` instead and marks the station "DRAFT" in the file. That's fine for checking the shape, but don't publish it. How to measure the amplifier gain for `chN_amp`: [`doc/Tuning.md`](../../doc/Tuning.md).
 
 Offline, `--config-json` takes a saved `{"config": <GET /api/config>, "acq": <GET /api/acq>}` in place of a live station.
 
