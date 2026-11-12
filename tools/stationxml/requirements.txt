@@ -1,0 +1,4 @@
+obspy==1.4.2
+PyYAML==6.0.2
+# obspy 1.4.2 imports pkg_resources, which setuptools 81 dropped
+setuptools==75.8.0

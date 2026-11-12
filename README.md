@@ -351,6 +351,7 @@ curl --data-binary @vseismo.cfg http://vseismo/api/config/import
 | `doc/API.md` | HTTP API contract |
 | `gateway/` | Gateway: bridge from `/api/wave` to miniSEED, ringserver, SDS archive, SeedLink (Docker Compose) |
 | `examples/` | Other setups: the gateway on a QNAP NAS in relay mode, and the public relay on an OpenBSD VPS |
+| `tools/stationxml/` | StationXML generator: full response from geophone to counts, read from the station's settings (ObsPy, Docker) |
 | `partitions.csv` | Dual-slot OTA layout |
 | `hardware/carrier/` | Carrier board rev A: generator, schematic and placement drawings, KiCad netlist |
 

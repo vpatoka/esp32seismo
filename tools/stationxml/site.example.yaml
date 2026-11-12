@@ -1,0 +1,64 @@
+# Site file for make_stationxml.py. Copy, fill in, keep the real one out of
+# git: it holds your coordinates. They are rounded to 0.01 degree (about
+# 1 km) in the output no matter how many digits you give here.
+
+# network and station default to the station's own settings (/api/config).
+#network: XX
+#station: VSEIS
+location: "00"
+
+site:
+  name: "Example site, Province, Country"
+  latitude: 0.00
+  longitude: 0.00
+  elevation_m: 0          # ground level at the sensor
+  depth_m: 0              # sensor depth below ground
+  start: "2026-01-01T00:00:00"   # first real data; a new epoch starts when the setup changes
+
+sender: "Your name or call sign"
+source: "vseismo"
+
+# Which ADC channel feeds which SEED channel. Same codes as SEED_CHAN in
+# gateway/.env. Dip -90 is vertical up, 0 horizontal. Leave azimuth null
+# until it is measured; the file then carries a comment saying so.
+channels:
+  - {code: EHZ, adc_channel: 0, azimuth: 0, dip: -90}
+  - {code: EH1, adc_channel: 1, azimuth: null, dip: 0}
+
+# Frequency the stage gains and the overall sensitivity are quoted at.
+normalization_hz: 10.0
+
+sensor:
+  description: "Mark Products L-15B 4.5 Hz geophone"
+  natural_hz: 4.5
+  damping: 0.6            # fraction of critical, as loaded by the amplifier input
+  # Used only with --draft while the station's chN_sens is 0. V/(m/s) as
+  # loaded by the amplifier input (EQAMP: 10k). Coil variants differ: check
+  # your geophone's label or measure, then set chN_sens on the station.
+  sensitivity_nominal: 28.8
+
+# Webtronics 3-channel EQAMP, geophone configuration: values from the
+# "Chan1-18Hz" schematic (L. Cochrane, rev 1.0, 2009). Check them against
+# your board; other cutoffs were built to order.
+amplifier:
+  description: "Webtronics EQAMP 3-channel amplifier/filter, geophone configuration"
+  gain_nominal: 1000      # --draft only, while chN_amp is 0
+  passband_hz: 1.0        # where the gain above is defined
+  highpass:               # C16 10 uF into R22 332k: 0.048 Hz (20 s)
+    - {r: 332.0e3, c: 10.0e-6}
+  rc_lowpass:             # RF1/CF1 and RF8/CF8: 21.9 Hz each
+    - {r: 33.0e3, c: 0.22e-6}
+    - {r: 33.0e3, c: 0.22e-6}
+  sallen_key:             # unity gain, c_fb to the output, c_gnd to ground
+    - {r1: 11.0e3, r2: 53.6e3, c_fb: 0.47e-6, c_gnd: 0.22e-6}    # U3A: 20.4 Hz, Q 0.55
+    - {r1: 16.2e3, r2: 82.5e3, c_fb: 0.47e-6, c_gnd: 0.10e-6}    # U3B: 20.1 Hz, Q 0.80
+    - {r1: 61.9e3, r2: 100.0e3, c_fb: 0.47e-6, c_gnd: 0.022e-6}  # U3C: 19.9 Hz, Q 2.25
+
+# Between the amplifier output and the ADC pin. The ratio itself comes from
+# the station's chN_div; these values give the RC pole (about 3.8 kHz).
+divider:
+  r_top: 9100
+  r_bottom: 1000
+  c: 47.0e-9
+
+datalogger: "vseismo: ESP32-C5 with TI ADS131M02, sinc3 + 201-tap FIR"
