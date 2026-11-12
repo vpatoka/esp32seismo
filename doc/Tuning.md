@@ -2,7 +2,7 @@
 
 How to set the two trimmers on each channel of the Webtronics EQAMP, and how to get the measured gain into the station (`chN_amp`) and from there into StationXML.
 
-Values here are for the 10 Hz build with JP1 in, as fitted on our board. See the [README](../README.md#signal-chain) for the signal chain.
+Values here are for the 10 Hz build with the gain jumper in on both channels, as fitted on our board. See the [README](../README.md#signal-chain) for the signal chain.
 
 ## The two trimmers
 
@@ -13,7 +13,18 @@ Each channel has two 50k trimmers:
 | Gain | R9 | LT1007 (U1) | LF411 (U2) stage gain, 1 + R9 / 5.1k = x1 to x10.8 |
 | Offset | R24 | NE5534 (U4) | DC level at the channel output |
 
-Channel gain with JP1 in is 33.5 x (1 + R9 / 5.1k) x 6.1, about 204 to 2208. Fully counter-clockwise is minimum gain. With JP1 out the first stage is x158 and the range is about 964 to 10400; a geophone doesn't need that.
+Fully counter-clockwise is minimum gain.
+
+### Gain jumpers
+
+Each channel has a two-pin jumper on its first stage: JP1 for channel 1 (Z here), JP2 for channel 2 (H). Check both before tuning.
+
+| Jumper | First stage | Channel gain, 33.5 or 158 x (1 + R9 / 5.1k) x 6.1 | Gain 1000 needs R9 at |
+|---|---|---|---|
+| In | x33.5 | about 204 to 2208 | about 20k, 40 % of the pot |
+| Out | x158 | about 964 to 10400 | about 200 ohm, the very CCW end |
+
+Use jumper in for geophones (Larry's doc says the same). With it out, gain 1000 sits at the end of the pot where the setting is touchy, and most of the travel goes to gains that clip at a few hundredths of a mm/s. A channel that still reads too high with the Gain pot fully CCW has its jumper out. Fit or pull jumpers with the power off.
 
 ### Order: gain first, then offset
 
@@ -136,6 +147,31 @@ Rougher, but needs only an AA cell and the same divider. Measure the cell with t
    - the station: offset at the output in mV = `mean` x `lsb_uv` / `div` / 1000, from `/api/acq`. With PGA 1 one count is 0.143 uV at the ADC, so 5 mV at the output is about 3500 counts.
 
 5 mV out of +-10 V costs nothing in headroom. Don't chase the last millivolt; it drifts with temperature.
+
+## With an oscilloscope
+
+A scope doesn't replace the DMM for the numbers, but it shows what the numbers can't.
+
+1. Generator level at 1 Hz: read it directly, 1.000 V rms = 2.83 Vpp. A scope is typically good to 2 to 3 %, so the DMM at 50 Hz stays the reference for the final level. Use the scope to confirm a clean sine with no DC offset.
+2. Output while turning the Gain pot: probe the channel output. Look for a clean sine, flat tops (clipping), distortion, or fast fuzz riding on it (the NE5534 oscillating).
+3. Channel match: the same 1 Hz tone into both channels, both outputs on the scope. The sines should overlap. In XY mode matched channels draw a thin diagonal line; an ellipse is a phase difference, a slope other than 45 degrees a gain difference. At 1 Hz XY traces slowly: use persistence or roll mode.
+4. Filter check: keep the generator level, step the frequency and compare the output with the 1 Hz amplitude. The 10 Hz build should give:
+
+   | Frequency | Output vs 1 Hz |
+   |---|---|
+   | 5 Hz | 89 % |
+   | 8.7 Hz | 71 % (-3 dB) |
+   | 10 Hz | 52 % |
+   | 12 Hz | 19 % |
+   | 15 Hz | 4 % |
+
+   Far off this means a different build or a wrong part.
+5. Power: AC coupled on the supply input and on the EQAMP rails. Look for ripple and DC-DC switching noise, and for bursts in step with WiFi transmit.
+6. Hum and interference: inputs shorted, output at the highest sensitivity. 50/60 Hz hum or bursts point at grounding or RF pickup.
+
+Not useful for: the 1 mV signal at the amplifier input (that's at the scope's own noise floor, measure before the divider), and the offset trim (a few mV of DC error; use the DMM).
+
+The scope's ground clip is tied to mains earth. Clip it only to the EQAMP ground, and expect the scope itself to add some hum during item 6. Running the station from a battery, or the scope from its own battery, keeps that loop out.
 
 ## Choosing the gain
 
