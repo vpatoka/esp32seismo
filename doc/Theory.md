@@ -20,7 +20,7 @@ L-15B H ─┴─ Webtronics EQAMP ─────────── 47 nF C0G �
 ```
 
 - Geophone: L-15B, 4.5 Hz natural frequency, velocity output above it.
-- Amplifier: LT1007 input stage, LF444 gain and filter stages, a multi-pole 20 Hz low-pass and a 0.05 Hz high-pass, ±10 V full swing. At gain ×1000 the analog chain reaches about 105 to 110 dB of dynamic range, which sets the bar for the converter.
+- Amplifier: LT1007 input stage, LF411 gain trim, a TL074 8-pole low-pass (about 18 Hz on the geophone build, 10 Hz on the other), a 1-pole high-pass, and an NE5534 output driver, ±10 V full swing. At gain ×1000 the analog chain reaches about 105 to 110 dB of dynamic range, which sets the bar for the converter.
 - Divider: 9.1 kΩ over 1.0 kΩ, 0.1 %, gain 0.0990. ±10 V becomes ±0.99 V, and a ±12 V rail clip still stays inside the ±1.2 V converter full scale at PGA 1.
 - RC: 47 nF C0G across the 1.0 kΩ leg. The source resistance is the parallel combination, 901 Ω, so the pole is at
 
