@@ -1,13 +1,17 @@
-# vseismo on the NAS (QNAP Container Station). See README.md.
+# vseismo gateway: a NAS (QNAP Container Station) or a small PC. See README.md.
 #
-#   station --HTTP pull--> bridge --DataLink--> ringserver --SeedLink--> slink2dali
-#                                               (ring, SDS)               |
-#                                       LAN SeedLink :18000               | DataLink
-#                                                                         v
+#   station --HTTP pull--> bridge --DataLink--> ringserver --SeedLink :18000--> clients
+#                                               (ring, SDS)
+#                                                    |  relay profile only:
+#                                                    +--SeedLink--> slink2dali --DataLink-->
 #                                       autossh --SSH out--> relay ringserver (relay.example.org)
 #
-# Nothing here accepts connections from outside the LAN. The only ports
-# published are SeedLink and bridge metrics, on the NAS LAN address.
+# Gateway mode (default): bridge, ringserver, sds-prune. SeedLink is served
+# straight from this host; a router port forward can expose it.
+# Relay mode: COMPOSE_PROFILES=relay in .env (or --profile relay) adds
+# slink2dali and autossh, and the stream goes out to the VPS instead.
+#
+# The only ports published are SeedLink and bridge metrics, on LAN_ADDR.
 
 name: vseismo
 
@@ -59,8 +63,31 @@ services:
     networks:
       seismo: { ipv4_address: 172.30.78.10 }
 
+  # Deletes SDS day files older than SDS_KEEP_DAYS, once a day. 0 keeps everything.
+  sds-prune:
+    <<: *common
+    image: busybox:1.37.0
+    init: true                      # sleep as PID 1 would ignore SIGTERM
+    network_mode: none
+    environment:
+      SDS_KEEP_DAYS: ${SDS_KEEP_DAYS:-365}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while :; do
+          k=$${SDS_KEEP_DAYS:-0}
+          if [ "$$k" -gt 0 ] 2>/dev/null; then
+            find /data/sds -type f -mtime +$$k -print -delete
+            find /data/sds -mindepth 1 -type d -empty -delete
+          fi
+          sleep 86400
+        done
+    volumes:
+      - ${DATA_ROOT}/sds:/data/sds
+
   autossh:
     <<: *common
+    profiles: [relay]
     build: ./autossh
     image: vseismo/autossh:local
     environment:
@@ -74,6 +101,7 @@ services:
 
   slink2dali:
     <<: *common
+    profiles: [relay]
     build: ./slink2dali
     image: vseismo/slink2dali:local
     command:
