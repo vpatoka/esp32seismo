@@ -25,6 +25,7 @@ import cmath
 import json
 import math
 import sys
+import urllib.error
 import urllib.request
 
 import yaml
@@ -148,18 +149,42 @@ def pz_stage(seq, name, zeros, poles, passband_gain, fn, f_hi, in_u, out_u, in_d
 
 # ── Inputs ─────────────────────────────────────────────────────────────────
 
-def fetch_json(url):
-    with urllib.request.urlopen(url, timeout=10) as r:
-        return json.load(r)
+class StationError(Exception):
+    """The station or a saved input could not be read; the message says why."""
+
+
+def fetch_json(base, path):
+    try:
+        with urllib.request.urlopen(base + path, timeout=10) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        raise StationError(f"station {base} answered HTTP {e.code} for {path}") from None
+    except urllib.error.URLError as e:
+        reason = getattr(e.reason, "strerror", None) or e.reason
+        raise StationError(f"station {base} unreachable ({path}): {reason}.\n"
+                           f"Is it powered and on Wi-Fi? Try: curl {base}/api/status") from None
+    except OSError as e:            # timeout or reset while reading the reply
+        raise StationError(f"station {base} unreachable ({path}): {e.strerror or e}") from None
+    except ValueError:
+        raise StationError(f"station {base}: {path} did not return JSON") from None
+
+
+def read_file(path, what, parse):
+    try:
+        with open(path) as f:
+            return parse(f)
+    except OSError as e:
+        raise StationError(f"cannot read {what} {path}: {e.strerror or e}") from None
+    except (ValueError, yaml.YAMLError) as e:
+        raise StationError(f"cannot read {what} {path}: {e}") from None
 
 
 def load_station(args):
     if args.config_json:
-        with open(args.config_json) as f:
-            data = json.load(f)
+        data = read_file(args.config_json, "station config", json.load)
         return data.get("config", data), data.get("acq")
     base = args.station_url.rstrip("/")
-    return fetch_json(base + "/api/config"), fetch_json(base + "/api/acq")
+    return fetch_json(base, "/api/config"), fetch_json(base, "/api/acq")
 
 
 def rates(cfg, acq):
@@ -326,14 +351,18 @@ def main(argv=None):
                     help="use the site file's nominal gain and sensitivity where the station has 0")
     args = ap.parse_args(argv)
 
-    with open(args.site) as f:
-        site = yaml.safe_load(f)
+    try:
+        site = read_file(args.site, "site file", yaml.safe_load)
+        if not isinstance(site, dict) or not isinstance(site.get("site"), dict):
+            raise StationError(f"cannot read site file {args.site}: no 'site:' block")
+        cfg, acq = load_station(args)
+    except StationError as e:
+        sys.exit(str(e))
     for k in ("latitude", "longitude"):
         v = str(site["site"][k])
         if "." in v and len(v.split(".")[1]) > 2:
             print(f"note: {k} rounded to 0.01 degree ({float(v):.2f})", file=sys.stderr)
 
-    cfg, acq = load_station(args)
     try:
         inv, report = build(cfg, acq, site, draft=args.draft)
     except NotCalibrated as e:

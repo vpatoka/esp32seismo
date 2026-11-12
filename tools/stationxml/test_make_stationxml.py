@@ -173,5 +173,38 @@ class Build(unittest.TestCase):
         self.assertEqual(sorted(back.get_contents()["channels"]), ["XX.VSEIS.00.EH1", "XX.VSEIS.00.EHZ"])
 
 
+def closed_port():
+    """A local TCP port nothing listens on: connecting fails at once."""
+    import socket
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+class Errors(unittest.TestCase):
+    def run_main(self, argv):
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(SystemExit) as cm:
+                mk.main(argv + ["-o", os.path.join(d, "x.xml")])
+        return str(cm.exception.code)
+
+    def test_unreachable_station_is_a_message(self):
+        url = f"http://127.0.0.1:{closed_port()}"
+        msg = self.run_main(["--station-url", url, "--site", os.path.join(HERE, "site.example.yaml")])
+        self.assertIn(f"station {url} unreachable (/api/config)", msg)
+        self.assertIn("/api/status", msg)
+
+    def test_missing_site_file_is_a_message(self):
+        msg = self.run_main(["--config-json", "unused.json", "--site", "/nonexistent/site.yaml"])
+        self.assertIn("cannot read site file /nonexistent/site.yaml", msg)
+
+    def test_missing_config_json_is_a_message(self):
+        msg = self.run_main(["--config-json", "/nonexistent/cfg.json",
+                             "--site", os.path.join(HERE, "site.example.yaml")])
+        self.assertIn("cannot read station config /nonexistent/cfg.json", msg)
+
+
 if __name__ == "__main__":
     unittest.main()
