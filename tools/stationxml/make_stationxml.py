@@ -265,7 +265,9 @@ def build(cfg, acq, site, draft=False, created=None):
         channels.append(Channel(
             code=ch["code"], location_code=loc, latitude=lat, longitude=lon,
             elevation=elev, depth=float(s.get("depth_m", 0.0)),
-            azimuth=float(az) if az is not None else 0.0, dip=float(ch["dip"]),
+            # Unknown azimuth is left out, not set to 0: rotation code would
+            # take a 0 as true north and quietly return wrong components.
+            azimuth=float(az) if az is not None else None, dip=float(ch["dip"]),
             sample_rate=fs_out, start_date=start,
             types=["CONTINUOUS", "GEOPHYSICAL"],
             sensor=Equipment(type="Geophone", description=site["sensor"]["description"]),
@@ -274,7 +276,7 @@ def build(cfg, acq, site, draft=False, created=None):
             response=resp,
             comments=[]))
         if az is None:
-            channels[-1].comments.append(Comment("Azimuth not yet measured; 0 is a placeholder"))
+            channels[-1].comments.append(Comment("Azimuth not yet measured; omitted"))
         report.append((ch["code"], resp.instrument_sensitivity.value, fs_out, delay))
 
     station = Station(

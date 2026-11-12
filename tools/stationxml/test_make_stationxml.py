@@ -131,6 +131,16 @@ class Build(unittest.TestCase):
         inv, _ = mk.build(CFG, ACQ, site(), created="2026-01-01")
         eh1 = inv[0][0].select(channel="EH1")[0]
         self.assertTrue(any("Azimuth" in c.value for c in eh1.comments))
+        self.assertIsNone(eh1.azimuth)
+        self.assertEqual(inv[0][0].select(channel="EHZ")[0].azimuth, 0.0)
+
+    def test_unmeasured_azimuth_absent_from_xml(self):
+        inv, _ = mk.build(CFG, ACQ, site(), created="2026-01-01")
+        buf = io.BytesIO()
+        inv.write(buf, format="STATIONXML", validate=True)
+        back = read_inventory(io.BytesIO(buf.getvalue()))
+        self.assertIsNone(back.select(channel="EH1")[0][0][0].azimuth)
+        self.assertEqual(back.select(channel="EHZ")[0][0][0].azimuth, 0.0)
 
     def test_writes_valid_stationxml(self):
         inv, _ = mk.build(CFG, ACQ, site(), created="2026-01-01")
