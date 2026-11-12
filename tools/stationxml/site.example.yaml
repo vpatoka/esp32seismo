@@ -18,6 +18,14 @@ site:
 sender: "Your name or call sign"
 source: "vseismo"
 
+# Optional: who runs the station, written as the Station's <Operator>.
+# agency is required if you use the block. An email here is public and
+# gets harvested; leave contact out unless you want one listed.
+#operator:
+#  agency: "Your name or call sign"
+#  website: "https://www.example.org"
+#  contact: {name: "Your name", email: "you@example.org"}
+
 # Which ADC channel feeds which SEED channel. Same codes as SEED_CHAN in
 # gateway/.env. Dip -90 is vertical up, 0 horizontal. Leave azimuth null
 # until it is measured; the file then carries a comment saying so.

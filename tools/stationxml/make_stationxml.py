@@ -29,8 +29,8 @@ import urllib.request
 
 import yaml
 from obspy import UTCDateTime
-from obspy.core.inventory import (Channel, Equipment, Inventory, Network, Site,
-                                  Station)
+from obspy.core.inventory import (Channel, Equipment, Inventory, Network,
+                                  Operator, Person, Site, Station)
 from obspy.core.inventory.response import (CoefficientsTypeResponseStage,
                                            FIRResponseStage,
                                            InstrumentSensitivity,
@@ -247,6 +247,25 @@ def channel_response(cfg_ch, cfg, acq, site, draft):
     return resp, fs_out, sinc_delay + fir_delay
 
 
+def station_operators(op):
+    """Station <Operator> from the site file's optional operator block.
+
+    It sits on the Station, not the Network: a receiving network owns its
+    Network element, while the station stays ours.
+    """
+    if not op:
+        return []
+    if not op.get("agency"):
+        raise ValueError("operator: agency is required when the block is present")
+    contacts = []
+    c = op.get("contact") or {}
+    if c.get("name") or c.get("email"):
+        contacts.append(Person(names=[c["name"]] if c.get("name") else None,
+                               emails=[c["email"]] if c.get("email") else None))
+    return [Operator(agency=op["agency"], contacts=contacts or None,
+                     website=op.get("website"))]
+
+
 def build(cfg, acq, site, draft=False, created=None):
     net_code = site.get("network") or cfg.get("network") or "XX"
     sta_code = site.get("station") or cfg.get("station") or "VSEIS"
@@ -282,7 +301,7 @@ def build(cfg, acq, site, draft=False, created=None):
     station = Station(
         code=sta_code, latitude=lat, longitude=lon, elevation=elev,
         site=Site(name=s["name"]), start_date=start, creation_date=start,
-        channels=channels)
+        channels=channels, operators=station_operators(site.get("operator")))
     if draft:
         station.comments.append(Comment(
             "DRAFT: nominal amplifier gain and/or geophone sensitivity, not measured"))

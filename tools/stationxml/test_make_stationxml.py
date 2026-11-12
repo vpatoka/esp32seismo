@@ -142,6 +142,28 @@ class Build(unittest.TestCase):
         self.assertIsNone(back.select(channel="EH1")[0][0][0].azimuth)
         self.assertEqual(back.select(channel="EHZ")[0][0][0].azimuth, 0.0)
 
+    def test_no_operator_by_default(self):
+        inv, _ = mk.build(CFG, ACQ, site(), created="2026-01-01")
+        self.assertEqual(inv[0][0].operators, [])
+
+    def test_operator_and_website_survive_xml(self):
+        s = site()
+        s["operator"] = {"agency": "Test Operator", "website": "https://www.example.org",
+                         "contact": {"name": "A. Person"}}
+        inv, _ = mk.build(CFG, ACQ, s, created="2026-01-01")
+        buf = io.BytesIO()
+        inv.write(buf, format="STATIONXML", validate=True)
+        op = read_inventory(io.BytesIO(buf.getvalue()))[0][0].operators[0]
+        self.assertEqual((op.agency, op.website), ("Test Operator", "https://www.example.org"))
+        self.assertEqual(op.contacts[0].names, ["A. Person"])
+        self.assertEqual(op.contacts[0].emails, [])
+
+    def test_operator_needs_agency(self):
+        s = site()
+        s["operator"] = {"website": "https://www.example.org"}
+        with self.assertRaises(ValueError):
+            mk.build(CFG, ACQ, s, created="2026-01-01")
+
     def test_writes_valid_stationxml(self):
         inv, _ = mk.build(CFG, ACQ, site(), created="2026-01-01")
         with tempfile.TemporaryDirectory() as d:
