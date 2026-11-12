@@ -116,6 +116,45 @@ vseismo_station_pending 0
 
 That last output is from a station whose acquisition wasn't running yet: the bridge is up and polling, but there are no samples, so there are no record counters yet. Once the station streams, `vseismo_records_sent_total` appears and grows by about one record per channel every few seconds, a DataLink `Client connected` line from the bridge shows in the ringserver log, and day files appear under `$D/sds/`. If `pending` stays above 0, the bridge is still catching up on the station's backlog.
 
+## Updating
+
+Pull, see what changed, and act only on that:
+
+```sh
+cd esp32seismo
+git status --short                  # should be empty: .env and data are gitignored
+old=$(git rev-parse HEAD)
+git pull
+git diff --stat "$old" HEAD
+```
+
+| Changed | On the gateway |
+|---|---|
+| `gateway/bridge/` | `docker compose up -d --build bridge` |
+| `gateway/ringserver/ring.conf` | `docker compose restart ringserver` |
+| `gateway/compose.yaml`, or your `.env` | `docker compose up -d` |
+| `gateway/slink2dali/`, `gateway/autossh/` | relay mode only: `docker compose up -d --build` |
+| `tools/stationxml/` | `docker build -t vseismo/stationxml tools/stationxml` if you generate StationXML here; the stack is untouched |
+| `main/`, `hardware/`, `doc/`, `examples/` | nothing: firmware goes to the station, not here |
+
+Run the `docker compose` lines from `gateway/`. When several rows match, `docker compose up -d --build` covers all of them except `ring.conf`.
+
+`up -d` only recreates containers whose image or compose settings changed. `ring.conf` is a bind mount, so compose doesn't see edits to it: restart ringserver yourself. A changed `RingSize` makes it rebuild the ring and carry over the packets that fit.
+
+Short restarts lose nothing. On SIGTERM the bridge flushes its open records (30 s grace), and on start it resumes from its saved seq, while the station keeps about 22 minutes of samples. While ringserver restarts, the bridge holds its records and retries; SeedLink clients reconnect by themselves.
+
+After an update:
+
+```sh
+docker compose ps                                   # all Up, bridge (healthy)
+docker compose logs --since 5m bridge ringserver
+curl -s http://192.168.1.20:9108/metrics | grep -E 'records_sent|gap_samples|outbox|pending'
+```
+
+`gap_samples_total` should not grow, and `outbox_records` should go back to 0.
+
+To roll back, `git checkout "$old"` (or `git revert` the commit) and repeat the same action. Builds leave old image layers behind, which add up on a small eMMC: `docker image prune` removes the unused ones.
+
 ## Metrics (`:9108/metrics`)
 
 | Metric | Meaning |
