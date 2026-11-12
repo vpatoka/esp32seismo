@@ -101,7 +101,7 @@ L-15B H ─┴─ Webtronics EQAMP (±10 V out) ──── 47 nF C0G ───
                                                                    CLKIN 8.192 MHz     web, OTA, console
 ```
 
-- **Amplifier:** LT1007 input stage, LF411 gain trim, TL074 8-pole low-pass (about 18 Hz, or 10 Hz on the other build), 1-pole high-pass, NE5534 driver, ±10 V out. At gain ×1000 the analog chain lands near 105 to 110 dB, which sets the bar for the ADC.
+- **Amplifier:** LT1007 input stage, LF411 gain trim, LF444 8-pole low-pass (the 10 Hz build, -3 dB near 8.7 Hz; Larry's schematics show a TL074 and an 18 Hz build too), 1-pole high-pass, NE5534 driver, ±10 V out. At gain ×1000 the analog chain lands near 105 to 110 dB, which sets the bar for the ADC.
 - **Divider:** 9.1k over 1.0k gives 0.099, so ±10 V becomes ±0.99 V. A ±12 V rail clip still stays inside the ±1.2 V full scale.
 - **RC:** 47 nF across the 1.0k puts a pole near 3.7 kHz. That's ample anti-aliasing for the ΔΣ modulator.
 

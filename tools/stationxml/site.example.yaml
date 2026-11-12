@@ -33,8 +33,10 @@ channels:
   - {code: EHZ, adc_channel: 0, azimuth: 0, dip: -90}
   - {code: EH1, adc_channel: 1, azimuth: null, dip: 0}
 
-# Frequency the stage gains and the overall sensitivity are quoted at.
-normalization_hz: 10.0
+# Frequency the stage gains and the overall sensitivity are quoted at. Keep
+# it inside the passband: with the 10 Hz EQAMP build and a 4.5 Hz geophone
+# the response peaks near 6 Hz and is already -5 dB at 10 Hz.
+normalization_hz: 6.0
 
 sensor:
   description: "Mark Products L-15B 4.5 Hz geophone"
@@ -45,22 +47,26 @@ sensor:
   # your geophone's label or measure, then set chN_sens on the station.
   sensitivity_nominal: 28.8
 
-# Webtronics 3-channel EQAMP, geophone configuration: values from the
-# "Chan1-18Hz" schematic (L. Cochrane, rev 1.0, 2009). Check them against
-# your board; other cutoffs were built to order.
+# Webtronics 3-channel EQAMP, 10 Hz build: values from the "Chan1-10Hz"
+# schematic (L. Cochrane, 2017), matching the fitted CF parts (105 on CF3,
+# CF5, CF7). U3 is an LF444 on this board, a TL074 on the schematic; the
+# filter response is the same. -3 dB at about 8.7 Hz, -29 dB at 15 Hz.
+# The "Chan1-18Hz" build (2009) uses RF1/RF8 33k, CF1/CF8 0.22 uF,
+# Sallen-Key 11k/53.6k/0.47u/0.22u, 16.2k/82.5k/0.47u/0.1u,
+# 61.9k/100k/0.47u/0.022u, high-pass 332k into 10 uF. Check your board.
 amplifier:
-  description: "Webtronics EQAMP 3-channel amplifier/filter, geophone configuration"
+  description: "Webtronics EQAMP 3-channel amplifier/filter, 10 Hz low-pass"
   gain_nominal: 1000      # --draft only, while chN_amp is 0
   passband_hz: 1.0        # where the gain above is defined
-  highpass:               # C16 10 uF into R22 332k: 0.048 Hz (20 s)
-    - {r: 332.0e3, c: 10.0e-6}
-  rc_lowpass:             # RF1/CF1 and RF8/CF8: 21.9 Hz each
-    - {r: 33.0e3, c: 0.22e-6}
-    - {r: 33.0e3, c: 0.22e-6}
+  highpass:               # C16 22 uF into R22 1.0M: 0.0072 Hz (138 s)
+    - {r: 1.0e6, c: 22.0e-6}
+  rc_lowpass:             # RF1/CF1 and RF8/CF8: 9.82 Hz each
+    - {r: 16.2e3, c: 1.0e-6}
+    - {r: 16.2e3, c: 1.0e-6}
   sallen_key:             # unity gain, c_fb to the output, c_gnd to ground
-    - {r1: 11.0e3, r2: 53.6e3, c_fb: 0.47e-6, c_gnd: 0.22e-6}    # U3A: 20.4 Hz, Q 0.55
-    - {r1: 16.2e3, r2: 82.5e3, c_fb: 0.47e-6, c_gnd: 0.10e-6}    # U3B: 20.1 Hz, Q 0.80
-    - {r1: 61.9e3, r2: 100.0e3, c_fb: 0.47e-6, c_gnd: 0.022e-6}  # U3C: 19.9 Hz, Q 2.25
+    - {r1: 11.0e3, r2: 49.9e3, c_fb: 1.0e-6, c_gnd: 0.47e-6}     # U3A: 9.91 Hz, Q 0.56
+    - {r1: 15.0e3, r2: 71.5e3, c_fb: 1.0e-6, c_gnd: 0.22e-6}     # U3B: 10.36 Hz, Q 0.81
+    - {r1: 40.2e3, r2: 274.0e3, c_fb: 1.0e-6, c_gnd: 0.022e-6}   # U3C: 10.22 Hz, Q 2.25
 
 # Between the amplifier output and the ADC pin. The ratio itself comes from
 # the station's chN_div; these values give the RC pole (about 3.8 kHz).

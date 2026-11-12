@@ -9,7 +9,7 @@ The script reads the station's live settings (`/api/config`, `/api/acq`), so the
 | Stage | Model | From |
 |---|---|---|
 | 1. Geophone | 2 zeros at 0, 2 poles from natural frequency and damping | site file (`sensor`), gain from the station's `chN_sens` |
-| 2. Amplifier | EQAMP: 1-pole high-pass at 0.048 Hz, 8-pole low-pass (2 RC poles at 21.9 Hz, 3 Sallen-Key pairs near 20 Hz), -3 dB at about 18 Hz | site file (`amplifier`, from the schematic), gain from `chN_amp` |
+| 2. Amplifier | EQAMP, 10 Hz build: 1-pole high-pass at 0.0072 Hz, 8-pole low-pass (2 RC poles at 9.82 Hz, 3 Sallen-Key pairs near 10 Hz), -3 dB at about 8.7 Hz | site file (`amplifier`, from the schematic), gain from `chN_amp` |
 | 3. Divider | 9.1k/1.0k with 47 nF: one pole at about 3.8 kHz | site file (`divider`), ratio from `chN_div` |
 | 4. ADC | 2^23 / (1.2 V / PGA) x gcal counts per volt | `chN_pga`, `chN_gcal` |
 | 5. sinc3 | modulator rate / OSR, unity gain (droop under 0.1 dB below 40 Hz) | `clk_hz`, `osr` |
@@ -35,8 +35,8 @@ docker run --rm --network host -v "$PWD":/work vseismo/stationxml \
 ```
 
 ```
-EHZ: 1.926e+10 counts/(m/s) at 10.0 Hz, 100 SPS, filter delay 101.50 ms (already removed from the timestamps)
-EH1: 1.926e+10 counts/(m/s) at 10.0 Hz, 100 SPS, filter delay 101.50 ms (already removed from the timestamps)
+EHZ: 1.69e+10 counts/(m/s) at 6.0 Hz, 100 SPS, filter delay 101.50 ms (already removed from the timestamps)
+EH1: 1.69e+10 counts/(m/s) at 6.0 Hz, 100 SPS, filter delay 101.50 ms (already removed from the timestamps)
 wrote XX.VSEIS.xml
 wrote XX.VSEIS.png
 ```
@@ -45,7 +45,7 @@ The script refuses to run while `chN_amp` or `chN_sens` is 0 on the station, bec
 
 Offline, `--config-json` takes a saved `{"config": <GET /api/config>, "acq": <GET /api/acq>}` in place of a live station.
 
-The output is validated against the FDSN StationXML schema before it is written. Check the plot: flat from about 5 to 18 Hz, falling 12 dB per octave below the 4.5 Hz geophone corner, and steeply above 18 Hz.
+The output is validated against the FDSN StationXML schema before it is written. Check the plot: a band from about 4 to 9 Hz peaking near 6 Hz, falling 12 dB per octave below the 4.5 Hz geophone corner, and steeply above 9 Hz (-5 dB at 10 Hz, about -29 dB at 15 Hz).
 
 ## When to make a new file
 
@@ -56,6 +56,6 @@ StationXML is versioned by date. Change `site.start` and regenerate when anythin
 | File | |
 |---|---|
 | `make_stationxml.py` | The generator |
-| `site.example.yaml` | Site file template, EQAMP geophone-configuration values from the "Chan1-18Hz" schematic |
+| `site.example.yaml` | Site file template, EQAMP values from the "Chan1-10Hz" schematic (the fitted build), with the 18 Hz values in a comment |
 | `test_make_stationxml.py` | FIR matches the firmware, EQAMP model matches the schematic, sensitivity equals the chain product, corrections equal delays, coordinates rounded, schema-valid output |
 | `Dockerfile`, `requirements.txt` | ObsPy 1.4.2 image |

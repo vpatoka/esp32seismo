@@ -63,10 +63,10 @@ class Analog(unittest.TestCase):
         self.assertEqual((len(z), len(p)), (1, 9))     # 1 high-pass + 8 low-pass poles
         ref = abs(mk.pz_eval(z, p, 1.0))
         rel = lambda f: abs(mk.pz_eval(z, p, f)) / ref
-        self.assertAlmostEqual(db(rel(0.0479)), -3.0, delta=0.3)    # 20 s high-pass
-        f3 = next(f / 100 for f in range(1000, 3000) if db(rel(f / 100)) < -3.0)
-        self.assertTrue(17.5 < f3 < 19.0, f3)                       # the "18 Hz" board
-        self.assertLess(db(rel(30.0)), -25.0)
+        self.assertAlmostEqual(db(rel(0.00723)), -3.0, delta=0.3)   # 138 s high-pass
+        f3 = next(f / 100 for f in range(300, 3000) if db(rel(f / 100)) < -3.0)
+        self.assertTrue(8.0 < f3 < 9.5, f3)                         # the "10 Hz" board
+        self.assertLess(db(rel(15.0)), -25.0)
 
     def test_geophone_flat_above_corner(self):
         z, p = mk.geophone_pz(4.5, 0.6)
