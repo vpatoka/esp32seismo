@@ -134,6 +134,21 @@ The site file defines the amplifier gain at 1 Hz (`passband_hz: 1.0`). At 1 Hz t
 
 `amp_mv` uses `chN_div`, default 1 / 10.1 from the 0.1 % divider resistors. At the levels above the ADC sees about 98 mV rms, far from clipping.
 
+### Generator example: HP 3312A
+
+The 3312A covers 0.1 Hz to 13 MHz and has a step attenuator down to about 1 mV, but keep the divider: at 1 mV nothing on the bench can check the level, and the divider lets the generator run at 1 V where the DMM is accurate.
+
+1. Function: sine.
+2. Modulation and sweep: off. The 3312A has a second, modulating generator; make sure nothing reaches the main output.
+3. DC offset: off or centred at zero. The EQAMP input is DC coupled and the first two stages multiply DC by up to about 360 before C16 blocks it. A stray offset can saturate them. The divider cuts what's left by 1011.
+4. Attenuator: 0 dB. Set the level with the amplitude knob against the DMM.
+5. Ignore the amplitude dial: it's calibrated into 50 ohm. Into the 100k divider the output is about twice the dial reading. The DMM reading is what counts.
+6. Frequency: about 1 Hz. The dial isn't precise there, and doesn't need to be: the amplifier is flat within 0.1 dB from 0.5 to 2 Hz. The scope shows one cycle per second.
+7. Level check: with the scope, compare Vpp at 50 Hz and at 1 Hz on the same range. A relative reading is much better than the scope's absolute 2 to 3 %. Equal readings confirm the amplitude didn't change with frequency.
+8. Reading: the frequency isn't exactly 1.000 Hz, so the 1 s `amp_mv` windows don't hold whole cycles and wobble a little. Average 10 or more.
+
+The 50 ohm output impedance adds 0.05 % to the 100k series resistor; ignore it.
+
 ### Without a generator: DC step
 
 Rougher, but needs only an AA cell and the same divider. Measure the cell with the DMM (DC is accurate), switch it onto the divider, and read the step height in the output samples (`/api/wave`) 0.5 to 1 s after the edge. The 10 Hz filter has settled by then. The high-pass has drooped by e^(-t / 22 s), 2 to 4 %: multiply the reading by e^(t / 22). Average the on and the off edges. Expect a few percent; use the tone for the final value.
