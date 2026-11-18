@@ -66,11 +66,13 @@ OSR 256 and 128 are rejected because the acquisition task wakes once per sample:
 
 ### 2.2 Clock sources
 
-| Source | `clk_src` | Accuracy | $f_s$ at OSR 4096 |
-|---|---|---|---|
-| 8.192 MHz CMOS oscillator or TCXO on CLKIN | `ext` | ±20 to 50 ppm, or ±0.5 to 2.5 ppm | 1000 SPS |
-| ESP32 LEDC from the 48 MHz XTAL, integer divider ÷ 6 | `ledc` | ±10 to 20 ppm | 976.5625 SPS |
-| On-board LTC6903 on the stock Click | `ltc6903` | about ±1.1 % plus drift | about 1000 SPS |
+| Source | `clk_src` | Carrier JP1 | Accuracy | $f_s$ at OSR 4096 |
+|---|---|---|---|---|
+| 8.192 MHz CMOS oscillator or TCXO (Y1 on the carrier) | `ext` | 1-2 | ±20 to 50 ppm, or ±0.5 to 2.5 ppm | 1000 SPS |
+| ESP32 LEDC from the 48 MHz XTAL, integer divider ÷ 6 | `ledc` | 3-4 | ±10 to 20 ppm | 976.5625 SPS |
+| On-board LTC6903 on the Click | `ltc6903` | 5-6, or an unmodified Click | about ±1.1 % plus drift | about 1000 SPS |
+
+All three reach CLKIN through the Click clock mod: the LTC6903-to-CLKIN trace is cut, CLKIN goes to the unused mikroBUS SDA pin and the LTC6903 output to SCL, and one shunt on the 2x3 JP1 picks the source ([carrier README](../hardware/carrier/README.md)). The firmware can't see the shunt, so `clk_src` must match it. In `ext` and `ledc` the firmware powers the LTC6903 down (CNF 11), so it doesn't toggle on SCL next to CLKIN.
 
 The LEDC divider is kept integer: a fractional LEDC divider dithers the period, which is phase noise on the converter clock. The price is a non-round rate, and an output rate of 97.65625 SPS after decimation by 10.
 
@@ -103,10 +105,11 @@ CLKIN takes LVCMOS at DVDD levels. There is no clock-select register and no mode
 
 Layout rules followed on the carrier board:
 
-1. Short oscillator-to-CLKIN trace over a continuous ground plane, no stubs, few vias.
-2. A small series resistor at the oscillator output, chosen for its output impedance and the trace.
-3. The clock never runs alongside the analog inputs. Its harmonics and return currents stay away from the divider, the RC and the EQAMP connector.
-4. Analog and digital sections are physically separated. The converter's resolution is only reachable if the layout does not couple the clock and the ESP32 into the inputs.
+1. Short oscillator-to-CLKIN path over a continuous ground plane, few vias. The path runs Y1, R33, JP1, the J5-6 socket contact and a short wire on the Click to CLKIN, about 5 to 8 cm in all. The two unused even JP1 pins are stubs of a few mm, harmless at 8 MHz.
+2. A small series resistor at each clock source's output (R33 for Y1, R32 for LEDC), chosen for its output impedance and the path.
+3. A ground trace between J5-5 (LTC_CLK) and J5-6 (CLKIN) out to JP1, so an unused clock doesn't couple into CLKIN.
+4. The clock never runs alongside the analog inputs. Its harmonics and return currents stay away from the divider, the RC and the EQAMP connector.
+5. Analog and digital sections are physically separated. The converter's resolution is only reachable if the layout does not couple the clock and the ESP32 into the inputs.
 
 Decoupling at the ADS131M02, close to the pins:
 

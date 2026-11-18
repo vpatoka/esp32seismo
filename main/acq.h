@@ -56,9 +56,9 @@ typedef enum {
 } acq_capture_t;
 
 typedef enum {
-    ACQ_CLK_EXT = 0,      /* oscillator on CLKIN, LTC6903 output cut */
-    ACQ_CLK_LEDC,         /* GPIO7 LEDC from XTAL, integer divider   */
-    ACQ_CLK_LTC6903,      /* stock Click: program the LTC6903        */
+    ACQ_CLK_EXT = 0,      /* carrier Y1 on CLKIN (JP1 1-2), LTC6903 off   */
+    ACQ_CLK_LEDC,         /* GPIO7 LEDC from XTAL (JP1 3-4), LTC6903 off  */
+    ACQ_CLK_LTC6903,      /* Click LTC6903 (JP1 5-6, or unmodified Click) */
 } acq_clk_src_t;
 
 typedef struct {
