@@ -47,8 +47,7 @@ flowchart LR
     P2 --> CB
     P3 --> CB
     CB -->|P4 to TB1, P5 to TB2| CLICK[ADC 15 Click]
-    CB -->|P6 CLKIN pair| CLICK
-    CLICK ---|J4 J5 mikroBUS| CB
+    CLICK ---|J4 J5 mikroBUS, incl. CLKIN and LTC_CLK| CB
     DK[ESP32-C5-DevKitC-1] ---|J1 J3| CB
     RTC[ZS-042 DS3231] ---|J2| CB
     GPS[GPS with PPS] -->|P7| CB
@@ -60,7 +59,8 @@ flowchart LR
 - **Two 3.3 V rails, on purpose:**
   - `+3V3` is the DevKit's own LDO. That regulator also feeds the ESP32 radio, so the rail carries WiFi transmit bursts. On the carrier it only feeds the DS3231, the pull-ups and the spare terminal.
   - `+3V3A` is a dedicated quiet rail: 5 V through FB1 into U2. It feeds only the Click and Y1. The Click ties the ADC's AVDD and DVDD to its mikroBUS 3.3V pin, so whatever sits on that pin reaches the analog front end.
-- **Not on mikroBUS.** The Click's analog inputs are its own screw terminals, and CLKIN is a pad on the Click. Both come from the carrier on short twisted-pair pigtails (P4, P5, P6).
+- **Not on mikroBUS.** The Click's analog inputs are its own screw terminals. They come from the carrier on short twisted-pair pigtails (P4, P5).
+- **Clock through the socket.** After the Click clock mod ([main README, ADC 15 Click Changes](../../README.md#adc-15-click-changes)), ADS131M02 CLKIN sits on the NC SDA pin (J5-6) and the LTC6903 output on the NC SCL pin (J5-5). JP1 on the carrier picks the source, so going back to the stock clock is a shunt move, not a resolder.
 
 ## Schematic
 
@@ -72,7 +72,7 @@ flowchart LR
 
 ## Connectors
 
-Screw terminals are Phoenix MKDS 1,5 at 5.08 mm. Module sockets and the CLKIN header are 2.54 mm.
+Screw terminals are Phoenix MKDS 1,5 at 5.08 mm. Module sockets and jumper headers are 2.54 mm.
 
 | Ref | Pins | Function |
 |---|---|---|
@@ -81,13 +81,12 @@ Screw terminals are Phoenix MKDS 1,5 at 5.08 mm. Module sockets and the CLKIN he
 | P3 | 1 SIG, 2 GND | EQAMP channel 2 output, horizontal (H), ±10 V |
 | P4 | 1 AIN0+, 2 AIN0− | To the Click TB1, same order as TB1 |
 | P5 | 1 AIN1−, 2 AIN1+ | To the Click TB2, same order as TB2, so the pair doesn't cross |
-| P6 | 1 CLKIN, 2 GND | To the Click CLKIN pad after the LTC6903 trace cut, twisted pair |
 | P7 | 1 +5V, 2 GND, 3 PPS | GPS module power and PPS |
 | P8 | 1 IO2, 2 IO3, 3 +3V3, 4 GND | Spare GPIO |
 | J1, J3 | 2 × 1x16 female | ESP32-C5-DevKitC-1 v1.2 |
 | J4, J5 | 2 × 1x8 female, mikroBUS pattern | ADC 15 Click |
 | J2 | 1x6 female | ZS-042: 32K, SQW, SCL, SDA, VCC, GND |
-| JP1 | 3-pin + shunt | ADC clock: 1-2 Y1, 2-3 GPIO7 LEDC, open = stock LTC6903 |
+| JP1 | 2x3 + shunt | ADC clock. Even pins 2/4/6 bussed to CLKIN (J5-6). 1-2 Y1, 3-4 GPIO7 LEDC, 5-6 LTC6903 (J5-5) |
 | JP2 | 3-pin + shunt | 1 Hz reference: 1-2 DS3231 SQW, 2-3 GPS PPS |
 
 ## DevKit pin use (v1.2 headers)
@@ -100,7 +99,7 @@ Screw terminals are Phoenix MKDS 1,5 at 5.08 mm. Module sockets and the CLKIN he
 | J1-5 | GPIO0 | G0_SYNC | R15 → Click RST (SYNC/RESET) |
 | J1-6 | GPIO1 | G1_DRDY | R14 ← Click INT (DRDY) |
 | J1-7 | GPIO6 | G6_SCK | R10 → Click SCK |
-| J1-8 | GPIO7 | G7_LEDC | R32 → JP1-3 |
+| J1-8 | GPIO7 | G7_LEDC | R32 → JP1-3 (LEDC_CLK) |
 | J1-9 | GPIO8 | G8_MOSI | R11 → Click MOSI |
 | J1-10 | GPIO9 | G9_MISO | R12 ← Click MISO |
 | J1-11 | GPIO10 | G10_CS | R13 → Click CS |
@@ -126,7 +125,9 @@ Screw terminals are Phoenix MKDS 1,5 at 5.08 mm. Module sockets and the CLKIN he
 | J4-8 | GND | GND |
 | J5-1 | PWM | ADC_CS2 (LTC6903 SEN) |
 | J5-2 | INT | ADC_DRDY |
-| J5-3..6 | RX, TX, SCL, SDA | not connected |
+| J5-3, J5-4 | RX, TX | not connected |
+| J5-5 | SCL | LTC_CLK: LTC6903 pin 6 on a modified Click, to JP1-5 |
+| J5-6 | SDA | CLKIN: ADS131M02 pin 17 on a modified Click, to JP1-2/4/6 and TP6 |
 | J5-7 | 5V | not connected, the Click runs on 3.3 V |
 | J5-8 | GND | GND |
 
@@ -136,7 +137,7 @@ Generated. The same data as `seismo-carrier.net`.
 
 | Net | Members |
 |---|---|
-| GND | C1-2, C2-2, C3-2, C4-2, C5-2, C6-2, C7-2, C12-2, C13-2, D1-2, J1-15, J2-6, J3-1, J3-12, J3-15, J4-8, J5-8, LED1-1, P1-2, P6-2, P7-2, P8-4, R30-2, R34-2, R43-2, TP5-1, U1-2, U2-2, Y1-2 |
+| GND | C1-2, C2-2, C3-2, C4-2, C5-2, C6-2, C7-2, C12-2, C13-2, D1-2, J1-15, J2-6, J3-1, J3-12, J3-15, J4-8, J5-8, LED1-1, P1-2, P7-2, P8-4, R30-2, R34-2, R43-2, TP5-1, U1-2, U2-2, Y1-2 |
 | +3V3 | C13-1, J1-1, J2-5, P8-3, R40-2, R41-2, R44-2, TP3-1 |
 | +3V3A | C5-1, C6-1, C7-1, C12-1, J4-7, R31-2, TP4-1, U2-1, Y1-4 |
 | +5V | C2-1, C3-1, D2-2, FB1-1, P7-1, R1-1, TP2-1, U1-3 |
@@ -157,8 +158,7 @@ Generated. The same data as `seismo-carrier.net`.
 | AMP_GND_Z | C10-2, P2-2, P4-2, R21-2, R30-1 |
 | AMP_H | P3-1, R22-1 |
 | AMP_Z | P2-1, R20-1 |
-| CLKIN | P6-1, R33-2, TP6-1 |
-| CLK_SEL | JP1-2, R33-1 |
+| CLKIN | J5-6, JP1-2, JP1-4, JP1-6, TP6-1 |
 | DK_5V | D2-1, J1-14 |
 | G0_SYNC | J1-5, R15-1 |
 | G1_DRDY | J1-6, R14-2 |
@@ -174,12 +174,14 @@ Generated. The same data as `seismo-carrier.net`.
 | I2C_SDA | J2-4, J3-8, R40-1 |
 | LED1_A | LED1-2, R1-2 |
 | LEDC_CLK | JP1-3, R32-2 |
+| LTC_CLK | J5-5, JP1-5 |
 | PPS_IN | JP2-3, R42-2, R43-1 |
 | RTC_SQW | J2-2, JP2-1 |
 | SPARE_IO2 | J1-3, P8-1 |
 | SPARE_IO3 | J1-4, P8-2 |
 | XO_EN | R31-1, Y1-1 |
-| XO_OUT | JP1-1, Y1-3 |
+| XO_OUT | R33-1, Y1-3 |
+| XO_R | JP1-1, R33-2 |
 
 ## Bill of materials
 
@@ -206,7 +208,7 @@ MPNs carried over from the Nixie carrier BOM are marked "as Nixie". The rest are
 | C10, C11 | 2 (buy 4) | 47 nF C0G/NP0, 25 V, ±10 %, radial 5.08 mm, 5.08 × 3.18 mm body | KEMET GoldMax 300 C0G, base C327C (Digi-Key listing checked, active) |
 | R20, R22 | 2 (buy 5+) | 9.1k ±0.1 % ±25 ppm/°C metal film, axial 1/4 W, 6.3 × 2.4 mm | Yageo MFP series (Digi-Key listing checked, active) |
 | R21, R23 | 2 (buy 5+) | 1.0k ±0.1 % ±25 ppm/°C metal film, axial 1/4 W, 6.3 × 2.4 mm | Yageo MFP series (Digi-Key listing checked, active) |
-| R10, R11, R12, R14, R32, R33 | 6 | 33 Ω 1/4 W | to choose |
+| R10, R11, R12, R14, R32, R33 | 6 | 33 Ω 1/4 W (R33 at Y1 pin 3) | to choose |
 | R13, R15, R16 | 3 | 330 Ω 1/4 W (CS, SYNC/RESET, CS2: not 0 Ω, see the design notes) | to choose |
 | R30, R34 (DNP) | 2 | 10 Ω 1/4 W, fit only if hum | to choose |
 | R1 | 1 | 2.2k 1/4 W | CF14JT2K20 (as Nixie) |
@@ -219,7 +221,8 @@ MPNs carried over from the Nixie carrier BOM are marked "as Nixie". The rest are
 | P7 | 1 | 3-pos screw terminal, 5.08 mm | 1715734 (verify, as Nixie) |
 | P8 | 1 | 4-pos screw terminal, 5.08 mm | to choose |
 | J1, J3, J4, J5, J2 | 1 strip | 1x20 female header, cut to length | PPTC201LFBN-RC (as Nixie) |
-| JP1, JP2, P6, TP1-TP6 | 1 strip | 1x40 male breakaway header | PREC040SAAN-RC (as Nixie) |
+| JP2, TP1-TP6 | 1 strip | 1x40 male breakaway header | PREC040SAAN-RC (as Nixie) |
+| JP1 | 1 | 2x3 male header, 2.54 mm, vertical | to choose (or cut from a 2x40 strip) |
 | JP1, JP2 shunts | 2 | Jumper shunt | QPC02SXGN-RC (as Nixie) |
 | Mechanical | 4 | M3 nylon standoffs + screws | any |
 
@@ -247,9 +250,14 @@ PCB: JLCPCB or PCBWay, 2 layers, 130 × 90 mm, 1.6 mm, 1 oz, HASL.
 - **Y1, CTS CB3LV-3I-8M192000.** 8.192 MHz, 3.3 V HCMOS, 7 × 5 mm SMD. Pins: 1 enable (open or high = running, low = high impedance), 2 GND, 3 output, 4 VCC. R31 holds enable high, and C12 (100 nF, the datasheet asks for at least 10 nF) sits at pin 4. It's the only SMD part on the board, with large pads that are easy to hand-solder.
   - Footprint `seismo:Oscillator_CTS_CB3LV_7.0x5.0mm` in `seismo.pretty`, from the CTS 008-0256-0 Rev H recommended pad layout: four 1.8 × 2.0 mm pads, 5.08 mm apart in X and 4.20 mm in Y, pin 1 bottom left, numbered anticlockwise. The generator writes it.
   - It sits on +3V3A with the Click, on purpose: on the DevKit's 3.3 V it could drive CLKIN through 33 Ω into an unpowered ADC.
-  - JP1 1-2 gives exactly 1000 SPS at OSR 4096 (firmware `clk_src=ext`).
-  - JP1 2-3 uses GPIO7 LEDC (`clk_src=ledc`).
-  - With the stock Click, leave JP1 open and P6 unwired, don't cut the trace, and set `clk_src=ltc6903`.
+- **JP1, clock select (2x3).** The even pins are bussed to CLKIN, the odd pins are the sources, and one shunt picks one:
+  - 1-2: Y1 through R33, exactly 1000 SPS at OSR 4096 (firmware `clk_src=ext`).
+  - 3-4: GPIO7 LEDC through R32, 8.000 MHz (`clk_src=ledc`).
+  - 5-6: the Click's own LTC6903, back through J5-5 (`clk_src=ltc6903`).
+  - Always fit one shunt. With none, CLKIN floats and the ADC stops.
+  - On an unmodified Click, J5-5 and J5-6 go nowhere and JP1 does nothing: the stock trace still feeds CLKIN, so use `clk_src=ltc6903`.
+  - Each source has its series resistor at its own driving end. The LTC6903 path has none on the carrier; a 33 Ω in the Click bodge wire at LTC6903 pin 6 is optional.
+  - In `ext` and `ledc` the LTC6903 output sits on the pin next to CLKIN. The firmware powers it down (CNF = 11, `ltc6903_power_down()` in `main/ads131m0x.c`) whenever `clk_src` isn't `ltc6903`. Route a GND trace between J5-5 and J5-6 out to JP1.
 - **1 Hz reference.** JP2 picks the DS3231 SQW or the GPS PPS. R44 is the pull-up the open-drain SQW needs. R42 protects GPIO23 from a 5 V PPS, and R43 (DNP) turns it into a 1k/2.2k divider if the GPS drives a 5 V PPS.
 - **ZS-042.** It has 4.7k pull-ups on SCL, SDA and SQW, so R40/R41 stay DNP. Its charge circuit (200 Ω and a diode from VCC) is meant for an LIR2032. With a plain CR2032, remove the diode.
 - **Power, from the EQAMP J8.** P1 takes the amplifier's raw DC, about 15 to 27 V. The carrier load sits ahead of the amplifier's LM7812 and LM2574, which regulate out the WiFi load steps.
@@ -339,8 +347,10 @@ Inside dimensions are estimates (1 to 1.5 cm lost per side to the walls and lid 
 4. **Carrier powered with the DevKit in.** TP3 = 3.3 V.
 5. **ZS-042 on J2, JP2 on 1-2.** With `rtc 1` and `ref rtc` set, the console shows the DS3231 and 1 Hz edges.
 6. **Click in.**
-   - Click unmodified, JP1 open, `clk_src=ltc6903`: the console shows "ADC ok, ID 0x22xx".
-   - Then cut the LTC6903 trace, wire P6 to the CLKIN pad, set JP1 1-2 and `clk_src=ext`.
+   - Click unmodified, `clk_src=ltc6903`: the console shows "ADC ok, ID 0x22xx". JP1 has no effect yet.
+   - Then do the Click clock mod: cut the trace, wire LTC6903 pin 6 to SCL and ADS131M02 pin 17 to SDA.
+   - JP1 on 5-6, `clk_src=ltc6903`: the ADC must come up exactly as before. That proves both bodge wires.
+   - JP1 on 1-2, `clk_src=ext`: scope TP6 for 8.192 MHz, check the rate reads 1000 SPS, and check J5-5 (SCL) is flat.
 7. **P4 and P5 pigtails to the Click TB1 and TB2.** Short P2 and P3 (SIG to GND) and read the noise floor on the web page. It should match the "Shorted" mux reading.
 8. **EQAMP J8 to P1, channel outputs on P2 and P3.** Check that the EQAMP's ±12 V stays steady with WiFi busy, and check for hum. If hum shows up, fit R30 and R34 at 10 Ω.
 
@@ -370,8 +380,8 @@ Generated. KiCad footprint per part.
 | J2 | DS3231 ZS-042 | `Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical` | module order 32K SQW SCL SDA VCC GND; 32K not connected |
 | J3 | DevKit J3 | `Connector_PinSocket_2.54mm:PinSocket_1x16_P2.54mm_Vertical` |  |
 | J4 | Click mikroBUS 1-8 | `Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical` | 1 AN not connected |
-| J5 | Click mikroBUS 16-9 | `Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical` | pad 1 = PWM (16) .. pad 8 = GND (9); RX TX SCL SDA 5V not connected |
-| JP1 | CLK SEL | `Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical` | 1-2 = oscillator, 2-3 = GPIO7 LEDC, open = stock LTC6903 |
+| J5 | Click mikroBUS 16-9 | `Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical` | pad 1 = PWM (16) .. pad 8 = GND (9); SCL = LTC_CLK and SDA = CLKIN after the Click mod; RX TX 5V not connected |
+| JP1 | CLK SEL | `Connector_PinHeader_2.54mm:PinHeader_2x03_P2.54mm_Vertical` | one shunt: 1-2 = Y1, 3-4 = GPIO7 LEDC, 5-6 = Click LTC6903 (via J5-5) |
 | JP2 | REF SEL | `Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical` | 1-2 = DS3231 SQW, 2-3 = GPS PPS |
 | LED1 | green | `LED_THT:LED_D3.0mm` |  |
 | P1 | DC IN EQAMP J8 | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal` |  |
@@ -379,7 +389,6 @@ Generated. KiCad footprint per part.
 | P3 | CH2 H IN | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal` |  |
 | P4 | TO CLICK TB1 | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal` |  |
 | P5 | TO CLICK TB2 | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal` |  |
-| P6 | CLKIN | `Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical` | twisted pair to the Click CLKIN pad |
 | P7 | GPS | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-3-5.08_1x03_P5.08mm_Horizontal` |  |
 | P8 | SPARE | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-4-5.08_1x04_P5.08mm_Horizontal` |  |
 | R1 | 2.2k | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
@@ -397,7 +406,7 @@ Generated. KiCad footprint per part.
 | R30 | 10R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | DNP by default: the J8 power return joins the grounds; fit only if hum |
 | R31 | 10k | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
 | R32 | 33R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
-| R33 | 33R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
+| R33 | 33R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | at Y1 pin 3 |
 | R34 | 10R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | DNP by default: the J8 power return joins the grounds; fit only if hum |
 | R40 | 4.7k | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | DNP: ZS-042 has its own |
 | R41 | 4.7k | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | DNP: ZS-042 has its own |
@@ -423,7 +432,7 @@ None. The carrier matches [`main/io_map.h`](../../main/io_map.h). Settings that 
 - Check the generated CB3LV footprint in the KiCad footprint viewer and against a printed 1:1 part. It follows CTS Rev H (7.0 × 5.0 mm); one older copy of the datasheet is titled 7.5 × 5 mm.
 - The OKI-78SR pin order (1 IN, 2 GND, 3 OUT) comes from KiCad's own symbol and footprint pair; check it against the Murata drawing.
 - The ADC 15 Click is listed as out of stock at MikroE and retired at SparkFun: buy a spare, or plan an on-board ADS131M02 for rev B.
-- The Click outline, the mikroBUS row spacing and the CLKIN pad position, from the MikroE drawing.
+- The Click outline and the mikroBUS row spacing, from the MikroE drawing.
 - DevKit revision (v1.1 or v1.2) and the J1/J3 pinout on the board in hand.
 - The ZS-042 header position relative to its mounting hole, for a 1:1 fit.
 - KiCad: create the project in this folder so `fp-lib-table` loads `seismo.pretty`, then import, footprint check (F1 and FB1 are stand-ins), routing, DRC.

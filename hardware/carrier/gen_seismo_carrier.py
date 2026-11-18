@@ -325,8 +325,13 @@ for no, (ref, esp) in {1: ("R16", "G24_CS2"), 2: ("R14", "G1_DRDY")}.items():
     x, y = cp[f"R{no}"]
     res_h(S, x, y, ref, SERIES_R[ref], length=100)
     netlab(S, x + 100, y, esp)
-for no in (3, 4, 5, 6):
+for no in (3, 4):
     x, y = cp[f"R{no}"]; S.text(x + 4, y + 4, "x", 13)
+for no, (net, note) in {5: ("LTC_CLK", "mod: LTC6903 p6"),
+                        6: ("CLKIN", "mod: ADS p17")}.items():
+    x, y = cp[f"R{no}"]
+    S.line(x, y, x + 30, y); netlab(S, x + 30, y, net)
+    S.text(x + 110, y + 4, note, 10, c=GRY)
 x, y = cp["R7"]; S.text(x + 4, y + 4, "x  not fed: the Click runs on 3.3V", 11, c=GRY)
 x, y = cp["R8"]; S.line(x, y, x + 20, y); gnd(S, x + 20, y)
 S.text(40, 926, "Series resistors sit at the driving end: R10, R11, R13, R15, R16 next to the DevKit, R12 (MISO)", 11, c=GRY)
@@ -335,7 +340,7 @@ S.text(40, 954, "high, so with the DevKit on USB and the carrier off they would 
 S.text(40, 968, "ESD diodes; 330R keeps that under 10 mA per pin. Low level against the Click's 4.7k pull-ups: 0.22 V.", 11, c=GRY)
 S.text(40, 982, "The Click's 4.7k pull-ups on RST, CS, PWM (CS2) and INT go to its VCC = +3V3A. PWM drives the LTC6903 SEN.", 11, c=GRY)
 S.text(40, 1000, "The analog inputs are NOT on mikroBUS: they are the Click's own TB1 / TB2 screw terminals,", 11, c=PWR)
-S.text(40, 1014, "wired from P4 and P5 (section D). CLKIN comes from P6 (section E) after the trace cut.", 11, c=PWR)
+S.text(40, 1014, "wired from P4 and P5 (section D). After the trace cut, CLKIN and LTC_CLK use the NC SDA/SCL pins.", 11, c=PWR)
 S.text(40, 1036, "mikroBUS sockets: 2 x 1x8, 22.86 mm row spacing. Check against the MikroE mikroBUS spec", 11, c=GRY)
 S.text(40, 1050, "and the ADC 15 Click drawing before ordering.", 11, c=GRY)
 
@@ -371,7 +376,7 @@ S.text(40, 1608, "and carrier grounds; fit 10R only if hum shows up. Ratio 0.099
 S.text(40, 1622, "a clamp to GND would clip the negative half. TB2 is AIN1-, AIN1+ on the Click (MikroE schematic v100).", 11, c=GRY)
 
 # ── E: ADC clock ──────────────────────────────────────────────────────────
-panel(S, 940, 720, 1000, 360, "E. ADC clock: 8.192 MHz oscillator or ESP32 LEDC, to the Click CLKIN pad")
+panel(S, 940, 720, 1000, 360, "E. ADC clock: Y1, ESP32 LEDC or the Click's LTC6903, picked on JP1 (2x3)")
 xpins, _ = ic(S, 1120, 800, "Y1", "CB3LV-3I-8M192000, 7 x 5 mm", [(4, "VCC"), (1, "EN")], [(3, "OUT"), (2, "GND")],
               w=150, pitch=60)
 x, y = xpins["L4"]; S.line(x, y, x - 40, y, c=PWR); netlab(S, x - 40, y, "+3V3A", side="l")
@@ -379,21 +384,25 @@ S.dot(x - 20, y); cap_v(S, x - 20, y, "C12", "100nF", length=26); gnd(S, x - 20,
 x, y = xpins["L1"]; res_h(S, x - 70, y, "R31", "10k", length=70); netlab(S, x - 70, y, "+3V3A", side="l")
 x, y = xpins["R2"]; S.line(x, y, x + 20, y); gnd(S, x + 20, y)
 xo = xpins["R3"]
-S.line(*xo, 1330, xo[1]); S.text(1290, xo[1] - 6, "XO_OUT", 10, c=NET)
-S.rect(1330, 800, 30, 90, fill="#f4f4f4"); S.text(1345, 790, "JP1", 12, anchor="middle", bold=True)
-for k, lab in enumerate(("1 XO", "2 SEL", "3 LEDC")):
-    S.circle(1345, 815 + k * 30, 6); S.text(1368, 819 + k * 30, lab, 11)
-S.line(1330, 845, 1310, 845); S.line(1310, 845, 1310, 960)
-res_h(S, 1310, 960, "R33", "33R", length=100)
-S.text(1450, 952, "CLKIN", 10, c=NET)
-S.rect(1520, 940, 34, 54, fill="#f4f4f4"); S.text(1537, 930, "P6", 12, anchor="middle", bold=True)
-S.circle(1537, 960, 6); S.circle(1537, 980, 6)
-S.line(1410, 960, 1520, 960); S.text(1562, 964, "1 CLKIN -> Click CLKIN pad", 11)
-S.text(1562, 984, "2 GND (twisted pair)", 11); S.line(1520, 980, 1500, 980); gnd(S, 1500, 980)
-S.line(1345, 881, 1345, 1030); S.line(1345, 1030, 1420, 1030)
-res_h(S, 1420, 1030, "R32", "33R", length=90); netlab(S, 1510, 1030, "G7_LEDC")
-S.text(960, 1062, "JP1 1-2: oscillator (exactly 1000 SPS at OSR 4096). 2-3: GPIO7 LEDC, 8.000 MHz. Open: stock LTC6903,", 11, c=GRY)
-S.text(960, 1076, "P6 unwired and the Click trace left intact. Y1 EN: open or high = running, R31 holds it high.", 11, c=GRY)
+res_h(S, xo[0], xo[1], "R33", "33R", length=90)
+S.line(xo[0] + 90, xo[1], 1440, xo[1]); S.text(1400, xo[1] - 6, "XO_R", 10, c=NET)
+# JP1, 2x3: odd pins (sources) on the left column, even pins (CLKIN) bussed on the right.
+y1 = xo[1]
+S.rect(1440, y1 - 20, 60, 100, fill="#f4f4f4"); S.text(1470, y1 - 30, "JP1 (2x3)", 12, anchor="middle", bold=True)
+for k in range(3):
+    S.circle(1455, y1 + k * 30, 6); S.circle(1485, y1 + k * 30, 6)
+    S.text(1451, y1 - 4 + k * 30, str(2 * k + 1), 9, anchor="end", c=GRY)
+    S.text(1491, y1 - 4 + k * 30, str(2 * k + 2), 9, c=GRY)
+S.line(1485, y1, 1485, y1 + 60)
+S.line(1485, y1, 1560, y1); netlab(S, 1560, y1, "CLKIN")
+S.text(1640, y1 + 4, "J5-6 (SDA) -> ADS131M02 CLKIN", 11)
+S.line(1440, y1 + 30, 1400, y1 + 30); S.line(1400, y1 + 30, 1400, 1030)
+res_h(S, 1400, 1030, "R32", "33R", length=90); netlab(S, 1490, 1030, "G7_LEDC")
+S.line(1440, y1 + 60, 1420, y1 + 60); S.line(1420, y1 + 60, 1420, 980); netlab(S, 1420, 980, "LTC_CLK")
+S.text(1500, 984, "J5-5 (SCL) <- LTC6903 CLK (pin 6)", 11)
+S.text(960, 1048, "Shunt 1-2: Y1, exactly 1000 SPS at OSR 4096 (ext). 3-4: GPIO7 LEDC, 8.000 MHz (ledc).", 11, c=GRY)
+S.text(960, 1062, "5-6: stock LTC6903 (ltc6903). Always fit one shunt: with none, CLKIN floats and the ADC stops.", 11, c=GRY)
+S.text(960, 1076, "Unmodified Click: J5-5/6 float, JP1 has no effect. Y1 EN: open or high = running, R31 holds it high.", 11, c=GRY)
 
 # ── F: timing ─────────────────────────────────────────────────────────────
 panel(S, 940, 1100, 1000, 470, "F. Timing: DS3231 (ZS-042) and GPS PPS, one of them to GPIO23")
@@ -535,9 +544,8 @@ sockets(36.27, 25, 8, VI, "J4"); sockets(59.13, 25, 8, VI, "J5")
 P.text(*mm(47.7, 14.5), "mikroBUS rows 22.86 mm apart", 9, anchor="middle", c=GRY)
 # ── clock under the Click
 box(37, 47, 9, 6, "Y1", "CB3LV 7x5", c=VI, size=10)
-box(49, 47, 3, 7.6, "", "", c=VI); P.text(*mm(48.6, 57), "JP1", 9, c=VI)
-box(54, 47, 7, 3, "R31-33", "", size=8)
-term(54, 53, 2, "P6", "CLKIN", vertical=False, pitch=2.54)
+box(49, 47, 5.08, 7.6, "", "", c=VI); P.text(*mm(48.6, 57), "JP1 2x3", 9, c=VI)
+box(55.5, 47, 6, 3, "R31-33", "", size=8)
 box(40, 55, 4, 3, "C12", "", size=8)
 # ── analog 3.3 V next to the Click 3.3V pin
 box(14, 44, 6, 3, "FB1", "", size=9)
@@ -607,7 +615,8 @@ rules = [
     ("VIN, 5V: 1 mm. Signals 0.3 mm.", False),
     ("SPI and DRDY: short, over solid GND,", False),
     ("  series R at the driving end.", False),
-    ("CLKIN: Y1 close to JP1 and P6.", False),
+    ("CLKIN: Y1 close to JP1, JP1 close to", False),
+    ("  J5-5/6. GND between CLKIN and LTC_CLK.", False),
     ("Nothing under the DevKit antenna.", False),
     ("Terminal wire entry faces the edge.", False),
     ("", False),
@@ -703,8 +712,9 @@ part("J4", "Click mikroBUS 1-8", FP_SKT.format(n=8), ("Connector", "Conn_01x08_S
      {2: "ADC_RST", 3: "ADC_CS", 4: "ADC_SCK", 5: "ADC_MISO", 6: "ADC_MOSI", 7: "+3V3A", 8: "GND"},
      "1 AN not connected")
 part("J5", "Click mikroBUS 16-9", FP_SKT.format(n=8), ("Connector", "Conn_01x08_Socket"),
-     {1: "ADC_CS2", 2: "ADC_DRDY", 8: "GND"},
-     "pad 1 = PWM (16) .. pad 8 = GND (9); RX TX SCL SDA 5V not connected")
+     {1: "ADC_CS2", 2: "ADC_DRDY", 5: "LTC_CLK", 6: "CLKIN", 8: "GND"},
+     "pad 1 = PWM (16) .. pad 8 = GND (9); SCL = LTC_CLK and SDA = CLKIN after the Click mod; "
+     "RX TX 5V not connected")
 res("R10", SERIES_R["R10"], "G6_SCK", "ADC_SCK")
 res("R11", SERIES_R["R11"], "G8_MOSI", "ADC_MOSI")
 res("R12", SERIES_R["R12"], "ADC_MISO", "G9_MISO", "place at the Click")
@@ -738,11 +748,11 @@ part("Y1", "CB3LV-3I-8M192000", "seismo:Oscillator_CTS_CB3LV_7.0x5.0mm", ("Oscil
 cap("C12", "100nF", "+3V3A", "GND", "at Y1 pin 4, datasheet asks >= 10 nF")
 res("R31", "10k", "XO_EN", "+3V3A")
 res("R32", "33R", "G7_LEDC", "LEDC_CLK")
-part("JP1", "CLK SEL", FP_HDR.format(n=3), ("Jumper", "Jumper_3_Open"),
-     {1: "XO_OUT", 2: "CLK_SEL", 3: "LEDC_CLK"}, "1-2 = oscillator, 2-3 = GPIO7 LEDC, open = stock LTC6903")
-res("R33", "33R", "CLK_SEL", "CLKIN")
-part("P6", "CLKIN", FP_HDR.format(n=2), ("Connector", "Conn_01x02_Pin"), {1: "CLKIN", 2: "GND"},
-     "twisted pair to the Click CLKIN pad")
+res("R33", "33R", "XO_OUT", "XO_R", "at Y1 pin 3")
+part("JP1", "CLK SEL", "Connector_PinHeader_2.54mm:PinHeader_2x03_P2.54mm_Vertical",
+     ("Connector_Generic", "Conn_02x03_Odd_Even"),
+     {1: "XO_R", 2: "CLKIN", 3: "LEDC_CLK", 4: "CLKIN", 5: "LTC_CLK", 6: "CLKIN"},
+     "one shunt: 1-2 = Y1, 3-4 = GPIO7 LEDC, 5-6 = Click LTC6903 (via J5-5)")
 
 # F: timing
 part("J2", "DS3231 ZS-042", FP_SKT.format(n=6), ("Connector", "Conn_01x06_Socket"),
