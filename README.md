@@ -116,8 +116,8 @@ ESP32-C5-DevKitC-1-N8R8: single-core RISC-V, 8 MB flash, 8 MB PSRAM.
 | ADC chip select | 10 | CS |
 | DRDY | 1 | INT |
 | SYNC/RESET | 0 | RST |
-| LTC6903 select (stock clock only) | 24 | PWM |
-| LEDC clock to CLKIN (optional) | 7 | CLKIN pad, after the trace cut |
+| LTC6903 select (programmed in `ltc6903`, powered down otherwise) | 24 | PWM |
+| LEDC clock to CLKIN (optional) | 7 | SDA (CLKIN after the clock mod), through carrier JP1 3-4 |
 | 1 Hz reference (GPS PPS or DS3231 SQW) | 23 | |
 | I2C SDA / SCL (DS3231, optional) | 4 / 5 | |
 | RGB LED / BOOT button | 27 / 28 | on board |
@@ -132,7 +132,15 @@ ESP32-C5-DevKitC-1-N8R8: single-core RISC-V, 8 MB flash, 8 MB PSRAM.
 The stock Click wires its screw terminals straight to the ADC pins and clocks the ADC from an LTC6903 that's only good to about 1 %. For seismic use:
 
 1. **Inputs:** fit the divider and RC above on each channel. 0.1 % resistors keep the two channels matched.
-2. **Clock:** cut the LTC6903 to CLKIN trace and fit an 8.192 MHz 3.3 V CMOS oscillator or TCXO.
+2. **Clock:** cut the LTC6903 to CLKIN trace, then wire LTC6903 pin 6 (CLK) to the unused SCL header pin and ADS131M02 pin 17 (CLKIN) to the unused SDA header pin. Both clocks then pass through the mikroBUS socket, and the 2x3 JP1 on the carrier picks the source:
+
+   | JP1 shunt | Source | `clk_src` |
+   |---|---|---|
+   | 1-2 | 8.192 MHz CTS CB3LV oscillator (Y1 on the carrier), or a TCXO on the same footprint | `ext` |
+   | 3-4 | GPIO7 LEDC, 8.000 MHz | `ledc` |
+   | 5-6 | The Click's own LTC6903, back through SCL | `ltc6903` |
+
+   Going back to the stock clock is a shunt move, not a resolder. Always fit one shunt: with none, CLKIN floats and the ADC stops. On an unmodified Click JP1 does nothing and only `ltc6903` works. Use SCL and SDA, not AN (next to RST) and never the 5V pin. After the mod the Click carries clocks on SCL and SDA, so keep it off any other host's I2C bus.
 3. **Supply:** feed the Click from its own low-noise 3.3 V LDO with a ferrite, not from the DevKit 3V3 pin. The Click ties AVDD and DVDD together.
 
 ### Power
@@ -153,6 +161,10 @@ The [carrier board](hardware/carrier/README.md) holds the DevKit, the ADC 15 Cli
 | 8.192 MHz oscillator or TCXO | ±20 to 50 ppm, or ±0.5 to 2.5 ppm | 1000 SPS exactly | `ext` |
 | ESP32 LEDC, 48 MHz XTAL ÷ 6 | ±10 to 20 ppm | 976.5625 SPS | `ledc` |
 | On-board LTC6903 | about ±1.1 % plus drift | about 1000 SPS | `ltc6903` |
+
+`clk_src` must match the carrier's JP1; the firmware can't see the shunt. A mismatch shows as a wrong measured rate against the 1 Hz reference, or as no DRDY at all.
+
+In `ext` and `ledc` the firmware powers the LTC6903 down (CNF 11). After the clock mod its output sits on SCL, right next to CLKIN on SDA. Left alone it would run at about 1.04 kHz from power-up, or near 8 MHz after a switch away from `ltc6903`. `ltc6903` mode wakes it again (about 100 µs).
 
 ### Wall Clock
 
@@ -341,7 +353,7 @@ curl --data-binary @vseismo.cfg http://vseismo/api/config/import
 | Path | Role |
 |---|---|
 | `main/vseismo.c` | Boot order, WiFi STA/AP, status LED, BOOT button, OTA self-test |
-| `main/ads131m0x.c` | ADS131M0x driver, CRC check, LTC6903 programming |
+| `main/ads131m0x.c` | ADS131M0x driver, CRC check, LTC6903 programming and power-down |
 | `main/acq.c` | DRDY interrupt and MCPWM capture, acquisition task, clock paths, FIR, output ring, statistics |
 | `main/timebase.c` | SNTP, DS3231 holdover, 1 Hz rate fit, PPS timestamp model, slewed sample clock |
 | `main/web_server.c` | Config, HTTP API, OTA writer, captive portal routes |
