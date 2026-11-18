@@ -25,14 +25,20 @@
  * ESP in reset, so the ADC is never held in reset by a floating pin.
  *
  * ADC clock options (cfg clk_src):
- *   ext      8.192 MHz CMOS oscillator or TCXO on CLKIN, LTC6903 output trace
- *            cut. Exactly 1000 SPS at OSR 4096. Recommended.
- *   ledc     GPIO7 drives CLKIN from the crystal-derived XTAL clock with an
- *            integer divider (48 MHz / 6 = 8.000 MHz, 976.5625 SPS at OSR 4096).
- *            Needs the same trace cut and a wire to GPIO7.
- *   ltc6903  the stock Click: the on-board LTC6903 is programmed over SPI
- *            (CS2 on GPIO24). About 1 % frequency error and temperature drift;
- *            usable only with a 1 Hz reference measuring the real rate.
+ * Click mod: cut the LTC6903-to-CLKIN trace, wire LTC6903 CLK (pin 6) to the
+ * NC SCL pin and ADS131M02 CLKIN (pin 17) to the NC SDA pin. The carrier's
+ * 2x3 JP1 then picks the source; the even pins are CLKIN.
+ *   ext      JP1 1-2: 8.192 MHz CMOS oscillator or TCXO on the carrier.
+ *            Exactly 1000 SPS at OSR 4096. Recommended.
+ *   ledc     JP1 3-4: GPIO7 drives CLKIN from the crystal-derived XTAL clock
+ *            with an integer divider (48 MHz / 6 = 8.000 MHz, 976.5625 SPS at
+ *            OSR 4096).
+ *   ltc6903  JP1 5-6 on a modified Click, or an unmodified Click: the
+ *            on-board LTC6903 is programmed over SPI (CS2 on GPIO24). About
+ *            1 % frequency error and temperature drift; usable only with a
+ *            1 Hz reference measuring the real rate.
+ * In ext and ledc the LTC6903 is powered down (CNF 11), so it doesn't toggle
+ * on the pin next to CLKIN.
  *
  * Board pins to verify on the bench against the DevKitC-1 v1.2 pinout before
  * the first power-up. These are proposals carried over from the esp32nixie

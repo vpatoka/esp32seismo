@@ -394,6 +394,11 @@ static uint32_t clock_setup(const acq_settings_t *s)
         s_ledc_on = false;
     }
 
+    /* After the Click mod the LTC6903 output sits on the mikroBUS pin next
+     * to CLKIN. Keep it quiet unless it is the clock. */
+    if (s->clk_src != ACQ_CLK_LTC6903 && ltc6903_power_down() != ESP_OK)
+        ESP_LOGE(TAG, "LTC6903 power-down write failed");
+
     if (s->clk_src == ACQ_CLK_LEDC) {
         uint32_t xtal = 0;
         esp_clk_tree_src_get_freq_hz(SOC_MOD_CLK_XTAL, ESP_CLK_TREE_SRC_FREQ_PRECISION_APPROX, &xtal);

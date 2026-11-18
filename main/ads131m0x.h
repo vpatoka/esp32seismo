@@ -139,4 +139,9 @@ int ads_osr_code(uint16_t osr);
 /** @brief Program the LTC6903 on the ADC 15 Click (stock clock path). */
 esp_err_t ltc6903_set_hz(uint32_t hz, uint32_t *actual_hz);
 
+/** @brief Power the LTC6903 down (CNF 11, both outputs off) when CLKIN comes
+ *  from somewhere else, so its output doesn't toggle next to CLKIN.
+ *  ltc6903_set_hz() wakes it again (about 100 us). */
+esp_err_t ltc6903_power_down(void);
+
 #endif /* ADS131M0X_H */

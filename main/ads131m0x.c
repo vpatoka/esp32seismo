@@ -311,7 +311,9 @@ const ads_info_t *ads_info(void)
 }
 
 /* LTC6903: f = 2^OCT * 2078 / (2 - DAC/1024) Hz, OCT 0..15, DAC 0..1023.
- * Word = OCT[15:12] DAC[11:2] CNF[1:0]; CNF 10 = CLK on, /CLK off. */
+ * Word = OCT[15:12] DAC[11:2] CNF[1:0]; CNF 10 = CLK on, /CLK off,
+ * CNF 11 = powered down. At power-up every bit is 0: about 1.04 kHz with
+ * both outputs on. */
 esp_err_t ltc6903_set_hz(uint32_t hz, uint32_t *actual_hz)
 {
     if (!s_ltc || hz < 1039 || hz > 68000000) return ESP_ERR_INVALID_ARG;
@@ -329,4 +331,12 @@ esp_err_t ltc6903_set_hz(uint32_t hz, uint32_t *actual_hz)
     if (actual_hz) *actual_hz = (uint32_t)lround(f);
     ESP_LOGI(TAG, "LTC6903: OCT %d DAC %ld -> %.0f Hz nominal (part tolerance about 1 %%)", oct, dac, f);
     return err;
+}
+
+esp_err_t ltc6903_power_down(void)
+{
+    if (!s_ltc) return ESP_ERR_INVALID_STATE;
+    uint8_t tx[2] = { 0x00, 0x03 };     /* CNF 11 */
+    spi_transaction_t t = { .length = 16, .tx_buffer = tx };
+    return spi_device_polling_transmit(s_ltc, &t);
 }
