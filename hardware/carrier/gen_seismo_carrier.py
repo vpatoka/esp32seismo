@@ -503,10 +503,10 @@ def term(x, y, n, ref, label, vertical=True, lab_side="r", pitch=5.08):
         P.text(X + w * K / 2, Y - 5, label, 10, anchor="middle", c=TG)
 
 
-def zone(x, y, w, h, c, label):
+def zone(x, y, w, h, c, label, lab_bottom=False):
     X, Y = mm(x, y)
     P.rect(X, Y, w * K, h * K, c=c, dash="7 5", sw=1.4)
-    P.text(X + 6, Y + 14, label, 10, c=c)
+    P.text(X + 6, Y + h * K - 6 if lab_bottom else Y + 14, label, 10, c=c)
 
 
 def module(x, y, w, h, ref, sub, c):
@@ -526,7 +526,7 @@ def sockets(x, y, n, c, name):
 
 VI = "#6a1b9a"
 # ── zones
-zone(1.5, 1.5, 32.5, 40, NET, "analog: P2-P5, dividers, RC")
+zone(1.5, 1.5, 32.5, 40, NET, "analog: P2-P5, dividers, RC", lab_bottom=True)
 zone(1.5, 62, 60, 26.5, PWR, "power: star GND at P1, U1 far from analog")
 # ── analog front end, left edge
 term(2, 9, 2, "P2", "CH1 Z")
@@ -542,11 +542,11 @@ X, Y = mm(37, 3); P.rect(X, Y, 21 * K, 7 * K, c=VI, fill="#fff", sw=1)
 P.text(X + 10.5 * K, Y + 4.5 * K, "Click TB1 / TB2 (AIN)", 9, anchor="middle", c=VI)
 sockets(36.27, 25, 8, VI, "J4"); sockets(59.13, 25, 8, VI, "J5")
 P.text(*mm(47.7, 14.5), "mikroBUS rows 22.86 mm apart", 9, anchor="middle", c=GRY)
-# ── clock under the Click
-box(37, 47, 9, 6, "Y1", "CB3LV 7x5", c=VI, size=10)
-box(49, 47, 5.08, 7.6, "", "", c=VI); P.text(*mm(48.6, 57), "JP1 2x3", 9, c=VI)
-box(55.5, 47, 6, 3, "R31-33", "", size=8)
-box(40, 55, 4, 3, "C12", "", size=8)
+# ── clock under the Click, JP1 right below J5 (SCL/SDA), C12 at Y1 pin 4 (top left)
+box(46, 47, 9, 6, "Y1", "CB3LV 7x5", c=VI, size=10)
+box(56, 46, 5.08, 7.6, "", "", c=VI); P.text(*mm(55.6, 56), "JP1 2x3", 9, c=VI)
+box(46, 54.5, 6, 3, "R31-33", "", size=8)
+box(41.5, 47, 4, 3, "C12", "", size=8)
 # ── analog 3.3 V next to the Click 3.3V pin
 box(14, 44, 6, 3, "FB1", "", size=9)
 box(14, 48, 6, 6, "C4", "", size=9)
@@ -583,17 +583,17 @@ term(120, 20, 3, "P7", "GPS", lab_side="l")
 term(120, 40, 4, "P8", "SPARE", lab_side="l")
 # ── power zone
 term(2, 66, 2, "P1", "DC IN J8")
-box(16, 64, 8, 3.5, "F1", "", size=9)
-box(16, 69, 9, 3, "D3", "", size=9)
-box(16, 74, 9, 3, "D1", "TVS", size=9)
-box(28, 64, 6, 6, "C1", "22uF", size=9)
+box(18, 65.5, 8, 3.5, "F1", "", size=9)
+box(18, 70, 9, 3, "D3", "", size=9)
+box(18, 74.5, 9, 4.5, "D1", "TVS", size=9)
+box(28, 65.5, 6, 6, "C1", "22uF", size=9)
 box(28, 76, 12, 7, "U1", "OKI-78SR", size=10)
-box(42, 64, 7, 7, "C2", "100uF", size=9)
-box(42, 73, 4, 3, "C3", "", size=8)
-box(51, 64, 5, 3, "", ""); P.text(*mm(51, 70), "LED1 R1", 9)
-box(51, 74, 10, 3, "D2", "1N5817", size=8)
-P.text(*mm(40, 85), "D2 cathode to J1-14 (5V) by a 1 mm", 9, c=GRY)
-P.text(*mm(40, 87), "trace around the keep-out", 9, c=GRY)
+box(42, 65.5, 7, 7, "C2", "100uF", size=9)
+box(42, 74, 4, 3, "C3", "", size=8)
+box(51, 65.5, 5, 3, "", ""); P.text(*mm(51, 71.5), "LED1 R1", 9)
+box(51, 74.5, 10, 4.5, "D2", "1N5817", size=8)
+P.text(*mm(37, 85), "D2 cathode to J1-14 (5V) by a 1 mm", 9, c=GRY)
+P.text(*mm(37, 87), "trace around the keep-out", 9, c=GRY)
 for i in range(6):
     X, Y = mm(104 + i * 3.2, 72)
     P.circle(X, Y, 6, fill="#ffeb3b")
