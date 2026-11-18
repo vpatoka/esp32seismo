@@ -633,46 +633,46 @@
 <text x='40' y='1622' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>a clamp to GND would clip the negative half. TB2 is AIN1-, AIN1+ on the Click (MikroE schematic v100).</text>
 <rect x='940' y='720' width='1000' height='360' rx='0' stroke='#666' stroke-width='1.2' fill='none' stroke-dasharray='6 4'/>
 <text x='950' y='740' font-size='15' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>E. ADC clock: Y1, ESP32 LEDC or the Click's LTC6903, picked on JP1 (2x3)</text>
-<rect x='1120' y='800' width='150' height='140' rx='0' stroke='#111' stroke-width='1.6' fill='#fbfbf3'/>
+<rect x='1120' y='800' width='150' height='180' rx='0' stroke='#111' stroke-width='1.6' fill='#fbfbf3'/>
 <text x='1195.0' y='778' font-size='13' fill='#111' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>Y1</text>
 <text x='1195.0' y='792' font-size='11' fill='#666' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace'>CB3LV-3I-8M192000, 7 x 5 mm</text>
 <line x1='1096' y1='820' x2='1120' y2='820' stroke='#111' stroke-width='1.6'/>
 <text x='1116' y='816' font-size='10' fill='#666' text-anchor='end' font-family='DejaVu Sans Mono, Consolas, monospace'>4</text>
 <text x='1126' y='824' font-size='12' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>VCC</text>
-<line x1='1096' y1='880' x2='1120' y2='880' stroke='#111' stroke-width='1.6'/>
-<text x='1116' y='876' font-size='10' fill='#666' text-anchor='end' font-family='DejaVu Sans Mono, Consolas, monospace'>1</text>
-<text x='1126' y='884' font-size='12' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>EN</text>
+<line x1='1096' y1='900' x2='1120' y2='900' stroke='#111' stroke-width='1.6'/>
+<text x='1116' y='896' font-size='10' fill='#666' text-anchor='end' font-family='DejaVu Sans Mono, Consolas, monospace'>1</text>
+<text x='1126' y='904' font-size='12' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>EN</text>
 <line x1='1270' y1='820' x2='1294' y2='820' stroke='#111' stroke-width='1.6'/>
 <text x='1274' y='816' font-size='10' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>3</text>
 <text x='1264' y='824' font-size='12' fill='#111' text-anchor='end' font-family='DejaVu Sans Mono, Consolas, monospace'>OUT</text>
-<line x1='1270' y1='880' x2='1294' y2='880' stroke='#111' stroke-width='1.6'/>
-<text x='1274' y='876' font-size='10' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>2</text>
-<text x='1264' y='884' font-size='12' fill='#111' text-anchor='end' font-family='DejaVu Sans Mono, Consolas, monospace'>GND</text>
-<line x1='1096' y1='820' x2='1056' y2='820' stroke='#b00020' stroke-width='1.6'/>
-<rect x='1006' y='811' width='50' height='18' rx='3' stroke='#0645ad' stroke-width='1.6' fill='none'/>
-<text x='1011' y='824' font-size='12' fill='#0645ad' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>+3V3A</text>
-<circle cx='1076' cy='820' r='3' stroke='#111' stroke-width='1.4' fill='#111'/>
-<line x1='1076' y1='820' x2='1076' y2='829.0' stroke='#111' stroke-width='1.6'/>
-<line x1='1064' y1='829.0' x2='1088' y2='829.0' stroke='#111' stroke-width='2.4'/>
-<line x1='1064' y1='837.0' x2='1088' y2='837.0' stroke='#111' stroke-width='2.4'/>
-<line x1='1076' y1='837.0' x2='1076' y2='846' stroke='#111' stroke-width='1.6'/>
-<text x='1092' y='831.0' font-size='11' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>C12</text>
-<text x='1092' y='844.0' font-size='11' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>100nF</text>
-<line x1='1076' y1='846' x2='1076' y2='854' stroke='#111' stroke-width='1.6'/>
-<line x1='1066' y1='854' x2='1086' y2='854' stroke='#111' stroke-width='2'/>
-<line x1='1070' y1='858' x2='1082' y2='858' stroke='#111' stroke-width='2'/>
-<line x1='1074' y1='862' x2='1078' y2='862' stroke='#111' stroke-width='2'/>
-<line x1='1026' y1='880' x2='1043.0' y2='880' stroke='#111' stroke-width='1.6'/>
-<rect x='1043.0' y='873' width='36' height='14' rx='0' stroke='#111' stroke-width='1.6' fill='none'/>
-<line x1='1079.0' y1='880' x2='1096' y2='880' stroke='#111' stroke-width='1.6'/>
-<text x='1061.0' y='869' font-size='11' fill='#111' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace'>R31 10k</text>
-<rect x='976' y='871' width='50' height='18' rx='3' stroke='#0645ad' stroke-width='1.6' fill='none'/>
-<text x='981' y='884' font-size='12' fill='#0645ad' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>+3V3A</text>
-<line x1='1294' y1='880' x2='1314' y2='880' stroke='#111' stroke-width='1.6'/>
-<line x1='1314' y1='880' x2='1314' y2='888' stroke='#111' stroke-width='1.6'/>
-<line x1='1304' y1='888' x2='1324' y2='888' stroke='#111' stroke-width='2'/>
-<line x1='1308' y1='892' x2='1320' y2='892' stroke='#111' stroke-width='2'/>
-<line x1='1312' y1='896' x2='1316' y2='896' stroke='#111' stroke-width='2'/>
+<line x1='1270' y1='900' x2='1294' y2='900' stroke='#111' stroke-width='1.6'/>
+<text x='1274' y='896' font-size='10' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>2</text>
+<text x='1264' y='904' font-size='12' fill='#111' text-anchor='end' font-family='DejaVu Sans Mono, Consolas, monospace'>GND</text>
+<line x1='1096' y1='820' x2='1026' y2='820' stroke='#b00020' stroke-width='1.6'/>
+<rect x='976' y='811' width='50' height='18' rx='3' stroke='#0645ad' stroke-width='1.6' fill='none'/>
+<text x='981' y='824' font-size='12' fill='#0645ad' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>+3V3A</text>
+<circle cx='1051' cy='820' r='3' stroke='#111' stroke-width='1.4' fill='#111'/>
+<line x1='1051' y1='820' x2='1051' y2='829.0' stroke='#111' stroke-width='1.6'/>
+<line x1='1039' y1='829.0' x2='1063' y2='829.0' stroke='#111' stroke-width='2.4'/>
+<line x1='1039' y1='837.0' x2='1063' y2='837.0' stroke='#111' stroke-width='2.4'/>
+<line x1='1051' y1='837.0' x2='1051' y2='846' stroke='#111' stroke-width='1.6'/>
+<text x='1067' y='831.0' font-size='11' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>C12</text>
+<text x='1067' y='844.0' font-size='11' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>100nF</text>
+<line x1='1051' y1='846' x2='1051' y2='854' stroke='#111' stroke-width='1.6'/>
+<line x1='1041' y1='854' x2='1061' y2='854' stroke='#111' stroke-width='2'/>
+<line x1='1045' y1='858' x2='1057' y2='858' stroke='#111' stroke-width='2'/>
+<line x1='1049' y1='862' x2='1053' y2='862' stroke='#111' stroke-width='2'/>
+<line x1='1026' y1='900' x2='1043.0' y2='900' stroke='#111' stroke-width='1.6'/>
+<rect x='1043.0' y='893' width='36' height='14' rx='0' stroke='#111' stroke-width='1.6' fill='none'/>
+<line x1='1079.0' y1='900' x2='1096' y2='900' stroke='#111' stroke-width='1.6'/>
+<text x='1061.0' y='889' font-size='11' fill='#111' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace'>R31 10k</text>
+<rect x='976' y='891' width='50' height='18' rx='3' stroke='#0645ad' stroke-width='1.6' fill='none'/>
+<text x='981' y='904' font-size='12' fill='#0645ad' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>+3V3A</text>
+<line x1='1294' y1='900' x2='1314' y2='900' stroke='#111' stroke-width='1.6'/>
+<line x1='1314' y1='900' x2='1314' y2='908' stroke='#111' stroke-width='1.6'/>
+<line x1='1304' y1='908' x2='1324' y2='908' stroke='#111' stroke-width='2'/>
+<line x1='1308' y1='912' x2='1320' y2='912' stroke='#111' stroke-width='2'/>
+<line x1='1312' y1='916' x2='1316' y2='916' stroke='#111' stroke-width='2'/>
 <line x1='1294' y1='820' x2='1321.0' y2='820' stroke='#111' stroke-width='1.6'/>
 <rect x='1321.0' y='813' width='36' height='14' rx='0' stroke='#111' stroke-width='1.6' fill='none'/>
 <line x1='1357.0' y1='820' x2='1384' y2='820' stroke='#111' stroke-width='1.6'/>

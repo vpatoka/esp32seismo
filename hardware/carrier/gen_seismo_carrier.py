@@ -378,9 +378,9 @@ S.text(40, 1622, "a clamp to GND would clip the negative half. TB2 is AIN1-, AIN
 # ── E: ADC clock ──────────────────────────────────────────────────────────
 panel(S, 940, 720, 1000, 360, "E. ADC clock: Y1, ESP32 LEDC or the Click's LTC6903, picked on JP1 (2x3)")
 xpins, _ = ic(S, 1120, 800, "Y1", "CB3LV-3I-8M192000, 7 x 5 mm", [(4, "VCC"), (1, "EN")], [(3, "OUT"), (2, "GND")],
-              w=150, pitch=60)
-x, y = xpins["L4"]; S.line(x, y, x - 40, y, c=PWR); netlab(S, x - 40, y, "+3V3A", side="l")
-S.dot(x - 20, y); cap_v(S, x - 20, y, "C12", "100nF", length=26); gnd(S, x - 20, y + 26)
+              w=150, pitch=80)
+x, y = xpins["L4"]; S.line(x, y, x - 70, y, c=PWR); netlab(S, x - 70, y, "+3V3A", side="l")
+S.dot(x - 45, y); cap_v(S, x - 45, y, "C12", "100nF", length=26); gnd(S, x - 45, y + 26)
 x, y = xpins["L1"]; res_h(S, x - 70, y, "R31", "10k", length=70); netlab(S, x - 70, y, "+3V3A", side="l")
 x, y = xpins["R2"]; S.line(x, y, x + 20, y); gnd(S, x + 20, y)
 xo = xpins["R3"]
