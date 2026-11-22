@@ -21,6 +21,7 @@
 #include "esp_check.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include <stdio.h>
 #include <string.h>
 
 static const char *TAG = "DS323X";
@@ -130,6 +131,31 @@ static esp_err_t probe(void)
     return err;
 }
 
+/* Bring-up aid: list every 7-bit address that ACKs, so a missing RTC can be
+ * told apart from one at another address or a dead bus. Runs once, only
+ * after the boot probe at DS323X_I2C_ADDR failed. Worst case 112 probes at
+ * I2C_XFER_TIMEOUT_MS each; a NACK returns much sooner. */
+static void scan_bus(void)
+{
+    char line[112 * 5 + 1];
+    size_t len = 0;
+    int found = 0;
+    line[0] = '\0';
+    for (uint16_t a = 0x08; a <= 0x77; a++) {
+        if (i2c_master_probe(s_bus, a, I2C_XFER_TIMEOUT_MS) == ESP_OK) {
+            len += (size_t)snprintf(line + len, sizeof(line) - len, " 0x%02X", a);
+            found++;
+        }
+    }
+    if (found) {
+        ESP_LOGW(TAG, "I2C scan (SDA %d, SCL %d): %d device(s) at%s",
+                 (int)I2C_SDA_GPIO, (int)I2C_SCL_GPIO, found, line);
+    } else {
+        ESP_LOGW(TAG, "I2C scan (SDA %d, SCL %d): no device answered",
+                 (int)I2C_SDA_GPIO, (int)I2C_SCL_GPIO);
+    }
+}
+
 static esp_err_t read_regs(uint8_t reg, uint8_t *buf, size_t len)
 {
     return xfer(&reg, 1, buf, len);
@@ -222,6 +248,7 @@ esp_err_t ds323x_init(i2c_master_bus_handle_t bus)
         /* Loud once; later re-probes of a chip that is not fitted stay quiet. */
         if (!s_missing_logged) {
             ESP_LOGE(TAG, "No RTC at 0x%02X (%s)", DS323X_I2C_ADDR, esp_err_to_name(err));
+            scan_bus();
             s_missing_logged = true;
         } else {
             ESP_LOGD(TAG, "No RTC at 0x%02X (%s)", DS323X_I2C_ADDR, esp_err_to_name(err));
