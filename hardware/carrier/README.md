@@ -38,7 +38,8 @@ Connections live in the `PARTS` list at the bottom of the script, and the drawin
 
 ```mermaid
 flowchart LR
-    PSU[18-24 V DC adapter] -->|J7| EQ[Webtronics EQAMP]
+    AC[AC mains] --> PSU[DIN Mean Well<br/>18-24 V DC]
+    PSU -->|J7| EQ[Webtronics EQAMP]
     EQ -->|J8 raw DC| CB[Carrier<br/>U1 5 V, U2 3.3 V analog]
     GZ[L-15B Z] -->|2-pin in| EQ
     GH[L-15B H] -->|2-pin in| EQ
@@ -54,7 +55,7 @@ flowchart LR
 ```
 
 - **One block per channel.** Each EQAMP channel has a 2-pin input from its geophone (into the LT1007) and a 2-pin output (signal and ground). The carrier keeps each output pair intact all the way to the ADC: the signal goes through the divider to AINx+, and that channel's own ground return goes to AINx−. That's a pseudo-differential input per channel.
-- **One adapter.** An 18 to 24 V DC adapter feeds the EQAMP J7. The carrier takes the EQAMP's J8, the raw DC after its bridge rectifier and before its LM7812 / LM2574 regulators (about 15 to 27 V). Never J9: that's the amplifier's own regulated ±12 V analog supply.
+- **One internal supply.** A DIN-rail Mean Well AC/DC supply in the enclosure provides 18 to 24 VDC (normally 24 VDC) to EQAMP J7. The carrier takes the EQAMP's J8, the raw DC after its bridge rectifier and before its LM7812 / LM2574 regulators (about 15 to 27 V). Never J9: that's the amplifier's own regulated ±12 V analog supply. The exact supply model and its datasheet clearances remain to be verified.
 - **Ground.** The J8 power return joins the EQAMP and carrier grounds. Each channel's ground return is its own net, `AMP_GND_Z` (P2-2 to P4-2) and `AMP_GND_H` (P3-2 to P5-1), and goes only to that channel's AINx−, so the few mV across the power return cancel in the ADC. The two meet at the EQAMP, not on the carrier. The optional links R30 and R34 are DNP by default.
 - **Two 3.3 V rails, on purpose:**
   - `+3V3` is the DevKit's own LDO. That regulator also feeds the ESP32 radio, so the rail carries WiFi transmit bursts. On the carrier it only feeds the DS3231, the pull-ups and the spare terminal.
@@ -189,7 +190,7 @@ MPNs carried over from the Nixie carrier BOM are marked "as Nixie". The rest are
 
 | Ref | Qty | Part | MPN |
 |---|---|---|---|
-| Adapter (off-board) | 1 | 18 to 24 V DC, 0.5 A or more, feeds the EQAMP J7 | any regulated |
+| PSU (inside enclosure) | 1 | DIN-rail Mean Well AC/DC, 18 to 24 VDC output (normally 24 V), 0.5 A or more, feeds EQAMP J7; exact model and temperature derating to verify | Mean Well, model TBD |
 | DK1 | 1 | ESP32-C5-DevKitC-1-N8R8 | Espressif |
 | Click | 1 | ADC 15 Click | MIKROE-4890 |
 | RTC | 1 | ZS-042 DS3231 module | generic, DS3231SN preferred |
@@ -285,55 +286,62 @@ The station lives in an uninsulated shed, so expect −30 °C winter nights, 40 
 
 ## Enclosure and DIN layout
 
-**Box:** about **400 × 300 mm** (15.7 × 11.8 in, or the 16 × 12 in equivalent):
-- polycarbonate or ABS, never metal, so the DevKit's WiFi gets out
-- IP66 or IP67
-- **15 cm or more inside depth**
-- preferably an insulated backplate
+### Required enclosure
 
-Smaller boxes were ruled out:
+Use a prefabricated **400 × 300 × 180 mm external** (15.7 × 11.8 × 7.1 in) polycarbonate or ABS enclosure. This is the smallest practical class for the populated station. It must be IP66 or IP67 and have a removable insulated mounting plate.
 
-| Box (outside) | Inside, about | Verdict |
-|---|---|---|
-| 29 × 19 × 14 cm | 27 × 17 × 12 cm | Only with the carrier stacked above the EQAMP. No DIN room. |
-| 12.8 × 9.8 in (325 × 250 mm) | 30 × 23 cm | Flat only with the carrier turned sideways. No terminal row. |
-| 13 × 13 in (330 × 330 mm) | 31 × 31 cm | Works, with a shallow terminal row. The square shape wastes room. |
-| **15.7 × 11.8 in (400 × 300 mm)** | 38 × 28 cm | **Chosen:** two clean rows, room for cables and service |
+Exterior size alone is not a fit guarantee. Before ordering, obtain the dimensional drawing and require:
 
-Inside dimensions are estimates (1 to 1.5 cm lost per side to the walls and lid seal). Check the real box.
+- **365 × 273 mm minimum unobstructed mounting area**; **380 × 280 mm preferred**
+- **130 mm absolute minimum clear depth** from mounting plate to closed lid; **150 mm preferred**
+- no lid ribs, hinge hardware or molded bosses intruding into those volumes
+- a bottom wall with room for separated mains, field-cable and GNSS entries plus a membrane vent
 
-**Layout on two TS35 rails (front view):**
+The mounting-field minimum comes from the real parts and service gaps:
+
+- width: 10 + 198 EQAMP + 15 separation + 132 carrier + 10 = **365 mm**
+- height: 10 + 148 EQAMP + 15 separation + 90 DIN-device zone + 10 = **273 mm**
+- depth: 100 Mean Well projection + rail/backplate allowance + terminal bend and lid clearance = **about 132 to 150 mm**
+
+The nominal Joinfworld 15.7 × 11.8 × 7.1 in box is therefore the candidate, but reject it if its actual mounting plate is smaller than 365 × 273 mm or its clear depth is under 130 mm. Use the 19.7 × 15.7 × approximately 8 in plastic version if the smaller product misses either dimension. The 13 × 13 × 5 in and all approximately 4 in-deep versions are too small or too shallow. A metal 16 × 12 × 8 in box fits mechanically but needs a bonded protective-earth connection and an external WiFi antenna.
+
+Prefer an opaque enclosure outdoors: a clear lid in sun adds solar heating. Do not use an openly vented weatherproof-box variant; use a sealed box with a hydrophobic pressure-equalization membrane vent and a desiccant pack.
+
+### Mounting-plate layout
+
+Reference layout on a 380 × 280 mm usable plate, coordinates from its upper-left corner:
+
+- EQAMP, 198 × 148 mm: `x=10, y=10`
+- carrier, 132 × 92 mm: `x=223, y=10`
+- Huawei WD22UGRC GNSS board, 67.2 × 31.8 mm excluding the protruding SMB connector: below the carrier, in an approximately 90 × 50 mm service envelope
+- separate DS3232 development board: beside the GNSS board, in a provisional 60 × 50 mm envelope until the board in hand is measured
+- one horizontal TS35 rail across the lower device zone for the Mean Well supply, fuse/disconnect and terminal blocks
 
 ```
-┌──────────────────────── 400 × 300 mm polycarbonate box ─────────────────────────┐
-│  rail 1 ════════════════════════════════════════════════════════════════════    │
+┌──────────────────────── 380 × 280 mm usable plate ──────────────────────────────┐
 │  ┌──────────────────────────────┐   ┌────────────────────┐                      │
 │  │ Webtronics EQAMP             │   │ Seismo carrier     │  ← DevKit antenna    │
-│  │ 19.7 × 14.6 cm               │   │ 13 × 9 cm          │    end toward this   │
-│  │ J7 power  J8 → carrier P1    │   │ DevKit, Click,     │    wall, clear of    │
-│  │ CH1/CH2 out → P2/P3          │   │ ZS-042 on sockets  │    the rail          │
+│  │ 198 × 148, direct standoffs  │   │ 132 × 92, direct   │    toward plastic    │
+│  │ geophone inputs at left      │   │ standoffs          │    wall/clear area   │
 │  └──────────────────────────────┘   └────────────────────┘                      │
+│                                      [WD22UGRC] [DS3232]                        │
 │                                                                                 │
-│  rail 2 ════════════════════════════════════════════════════════════════════    │
-│  [Z sig][Z gnd][Z shld] [H sig][H gnd][H shld]  ......  [fuse 20V][20V+][GND]   │
-│   geophone end ◄──────── keep apart ────────► power end                         │
+│  TS35 ═══════════════════════════════════════════════════════════════════════    │
+│  [geophone terminals] ... [LV terminals] ... [Mean Well] [AC fuse/disconnect]   │
+│   sensitive end ◄──────── physical separation ───────────────► mains end         │
 │                                                                                 │
-│  glands (bottom): Z cable, H cable ............ GPS ...... 20 V DC ..... vent   │
+│  bottom entries: field cable ........ GNSS coax ....... AC mains .... membrane   │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Mounting the boards:** snap-on DIN PCB clips or carrier profiles, screwed to standoffs. The carrier's four M3 corner holes take them directly. If the EQAMP's holes don't line up with the clips, put a small insulating plate under it on the clips.
-- **Antenna:** the rail is metal. The DevKit's antenna end sits beside the rail toward the box wall, never across it, and over the antenna keep-out.
-- **Terminal row:**
-  - At one end, two signal-and-ground pairs with a shield terminal each, one set per geophone. The shields connect to amplifier ground at the EQAMP end only.
-  - At the other end, the 20 V input through a DIN fuse terminal. Keep the geophone and power blocks apart.
-- **Wiring:**
-  - Short wires from the blocks to the EQAMP inputs and its J7 jack.
-  - EQAMP J8 to carrier P1, and the EQAMP CH1/CH2 outputs to P2/P3, as one short bundle (see the ground notes).
-  - Nothing runs across the DevKit end.
-- **Cable glands:** two for the geophones and one for power, kept apart, one for the GPS antenna or module, plus one vent membrane against condensation. Add a desiccant pack inside.
-- **Power adapter:** the 20 V laptop adapter stays outside the box, indoors if possible. Only the DC lead comes in.
-- **Spare rail space:** room for a GPS module, an RTC holder or another terminal block later, without redesign.
+- **Mounting the large boards:** bolt the EQAMP and carrier directly to the insulated plate on nylon or metal M3 standoffs. Do not consume DIN-rail area with PCB carriers. Verify the EQAMP hole pattern and maintain clearance under both boards.
+- **Mean Well supply:** the working envelope is presently based on approximately 40 × 90 mm against the plate and 100 mm projection. The exact model drawing controls the rail position, terminal bend space, ventilation and orientation; do not drill the rail until that drawing and the part are checked.
+- **GNSS board:** the Huawei WD22UGRC is one assembly carrying the u-blox LEA-M8T-0-10. Do not count the receiver module separately. Face the SMB connector toward the coax entry and allow cable bend radius outside the 67.2 × 31.8 mm PCB outline.
+- **DS3232 board:** this is separate from the carrier's documented ZS-042 socket. Confirm its dimensions, hole pattern, I2C connector and SQW level before fixing its position or changing the carrier interface.
+- **RF clearance:** keep the ESP32 antenna end away from the steel rail, Mean Well supply and wiring. Nothing crosses the antenna keep-out.
+- **Segregation:** put geophone terminals and wiring at the far left and mains equipment at the far right. Do not share wire duct or gland space between mains and sensor wiring. Use finger-safe mains terminals, strain relief, an appropriately rated fuse/disconnect, protective-earth treatment required by the supply and local code, and barriers where required.
+- **Low-voltage wiring:** bundle EQAMP J8 to carrier P1 with the two EQAMP output pairs to P2/P3, keep it short, and do not run it through the mains zone.
+- **Entries:** use bottom entries for the single shielded field cable described in the main README's site-install documentation, AC mains, and the GNSS coax/bulkhead, plus a hydrophobic membrane vent. Keep the GNSS surge arrester at the building entry and bond it with a short, straight grounding lead.
 
 ## Bring-up order
 
