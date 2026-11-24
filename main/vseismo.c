@@ -4,7 +4,7 @@
  * @file vseismo.c
  * @brief Two-channel geophone digitizer on ESP32-C5: boot, WiFi, LED, button, OTA self-test.
  *
- * Chain: L-15B geophones -> Webtronics EQAMP -> divider -> ADC 15 Click
+ * Chain: 4.5 Hz geophones -> Webtronics EQAMP -> divider -> ADC 15 Click
  * (ADS131M02, simultaneous sampling) -> ESP32-C5 -> web tuning page, and
  * /api/wave for the gateway that builds miniSEED and SeedLink.
  *

@@ -41,8 +41,8 @@ flowchart LR
     AC[AC mains] --> PSU[DIN Mean Well<br/>18-24 V DC]
     PSU -->|J7| EQ[Webtronics EQAMP]
     EQ -->|J8 raw DC| CB[Carrier<br/>U1 5 V, U2 3.3 V analog]
-    GZ[L-15B Z] -->|2-pin in| EQ
-    GH[L-15B H] -->|2-pin in| EQ
+    GZ[Lipe 4.5 Hz Z] -->|2-pin in| EQ
+    GH[LGT-4.5H H] -->|2-pin in| EQ
     EQ -->|CH1 out, 2-pin| P2[P2]
     EQ -->|CH2 out, 2-pin| P3[P3]
     P2 --> CB
@@ -281,7 +281,7 @@ The station lives in an uninsulated shed, so expect −30 °C winter nights, 40 
 - **DS3231.** Use a ZS-042 with the DS3231SN (TCXO, ±2 ppm), not the DS3231M. An LIR2032 loses much of its capacity in hard frost, so a plain CR2032 with the charge diode removed is often the better winter choice.
 - **Electrolytics.** C1, C2, C4 and C5 lose capacitance in the cold, and the LP2950 needs its output capacitor to stay stable. Use parts rated −40 °C (the Panasonic FR series in the BOM is).
 - **Condensation.** A sealed enclosure with a desiccant pack, or a vent membrane, matters more than any part rating. Dew on R20-R23 and C10-C11 shows up as drift and noise. Conformal coating of the analog zone is worth considering.
-- **Amplifier and sensors.** Temperature also shifts the L-15B damping and the EQAMP offset. The EQAMP's 0.05 Hz high-pass removes slow offset drift before it reaches the ADC.
+- **Amplifier and sensors.** Temperature also shifts the geophone damping and the EQAMP offset. The EQAMP's 0.05 Hz high-pass removes slow offset drift before it reaches the ADC.
 - **Placement.** Put the geophones on a pier or bedrock away from the shed walls, and run the cables slack. Wind on the shed shows up first in the horizontal channel.
 
 ## Enclosure and DIN layout

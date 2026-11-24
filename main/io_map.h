@@ -4,7 +4,7 @@
  * @file io_map.h
  * @brief Pin map and hardware constants for vseismo (ESP32-C5-DevKitC-1-N8R8).
  *
- * Signal chain: L-15B geophones -> Webtronics 3-channel EQAMP (two channels,
+ * Signal chain: 4.5 Hz geophones -> Webtronics 3-channel EQAMP (two channels,
  * +-10 V out) -> 9.1k/1.0k 0.1 % divider + 47 nF C0G per channel -> MikroE
  * ADC 15 Click (TI ADS131M02) -> this board over SPI.
  *

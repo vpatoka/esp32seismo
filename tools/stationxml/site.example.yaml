@@ -39,7 +39,10 @@ channels:
 normalization_hz: 6.0
 
 sensor:
-  description: "Mark Products L-15B 4.5 Hz geophone"
+  # One block covers both channels. This station has a Lipe 4.5 Hz element on
+  # Z and an LGT-4.5H on H; the per-channel gain comes from chN_sens, but the
+  # poles (natural_hz, damping) are shared. Use the measured values.
+  description: "4.5 Hz moving-coil geophone"
   natural_hz: 4.5
   damping: 0.6            # fraction of critical, as loaded by the amplifier input
   # Used only with --draft while the station's chN_sens is 0. V/(m/s) as

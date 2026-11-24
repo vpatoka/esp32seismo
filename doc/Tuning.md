@@ -190,7 +190,7 @@ The scope's ground clip is tied to mains earth. Clip it only to the EQAMP ground
 
 ## Choosing the gain
 
-Clip points with the L-15B at 28.8 V/(m/s) and +-10 V out, in the passband:
+Clip points for a geophone at 28.8 V/(m/s) (the usual figure for a 375 to 380 Ω, 4.5 Hz element) and +-10 V out, in the passband. Scale by 28.8 / your loaded sensitivity:
 
 | Gain | Input clip, peak | Ground velocity clip, peak |
 |---|---|---|

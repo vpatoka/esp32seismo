@@ -8,7 +8,7 @@
     ║   ██║   ██║██╔════╝██╔════╝██║██╔════╝████╗ ████║██╔═══██╗  ADS131M02 ║
     ║   ██║   ██║███████╗█████╗  ██║███████╗██╔████╔██║██║   ██║  ESP32-C5  ║
     ║   ╚██╗ ██╔╝╚════██║██╔══╝  ██║╚════██║██║╚██╔╝██║██║   ██║  IDF v6.1  ║
-    ║    ╚████╔╝ ███████║███████╗██║███████║██║ ╚═╝ ██║╚██████╔╝  2 x L-15B ║
+    ║    ╚████╔╝ ███████║███████╗██║███████║██║ ╚═╝ ██║╚██████╔╝  2 x 4.5Hz ║
     ║     ╚═══╝  ╚══════╝╚══════╝╚═╝╚══════╝╚═╝     ╚═╝ ╚═════╝             ║
     ║                                                                       ║
     ║                    ││ │ │          ││ │││  │ │    │                   ║
@@ -19,7 +19,7 @@
     ║                      │             │││││││ │││ │ │    │               ║
     ║                    P               S                                  ║
     ╠═══════════════════════════════════════════════════════════════════════╣
-    ║    L-15B  ──►  EQAMP  ──►  ADS131M02  ──►  ESP32-C5  ──►  web, OTA    ║
+    ║    4.5 Hz ──►  EQAMP  ──►  ADS131M02  ──►  ESP32-C5  ──►  web, OTA    ║
     ║                            de VE3VPT - Vlad                           ║
     ╚═══════════════════════════════════════════════════════════════════════╝
 
@@ -59,7 +59,7 @@
 
 ## Introduction
 
-A home seismic station built around Larry Cochrane's Webtronics 3-channel seismic amplifier, the board many Public Seismic Network stations ran with WinSDR and WinQuake. Two L-15B 4.5 Hz geophones, one vertical and one horizontal, feed two amplifier channels.
+A home seismic station built around Larry Cochrane's Webtronics 3-channel seismic amplifier, the board many Public Seismic Network stations ran with WinSDR and WinQuake. Two 4.5 Hz geophones, one vertical and one horizontal, feed two amplifier channels. Here that's a vintage Lipe Resistance Products element on Z and an LGT-4.5H on H; any 4.5 Hz moving-coil pair works, with its sensitivity set per channel.
 
 The original plan used an AD7177. Its channels share one converter behind a mux, so they're never sampled at the same instant. esp32seismo replaces it with a TI **ADS131M02** on a MikroE ADC 15 Click: one modulator per channel, both clocked together. An **ESP32-C5-DevKitC-1-N8R8** on **ESP-IDF v6.1** reads it, filters it down to 100 SPS, timestamps every sample in UTC and serves a tuning page over WiFi.
 
@@ -97,8 +97,8 @@ The infrastructure (WiFi on 2.4 and 5 GHz, captive portal, OTA with rollback, US
 ### Signal Chain
 
 ```
-L-15B Z ─┐                                    9.1k / 1.0k 0.1 %    ADC 15 Click        ESP32-C5-DevKitC-1
-L-15B H ─┴─ Webtronics EQAMP (±10 V out) ──── 47 nF C0G ────────── ADS131M02 ── SPI ── N8R8
+Z 4.5Hz ─┐                                    9.1k / 1.0k 0.1 %    ADC 15 Click        ESP32-C5-DevKitC-1
+H 4.5Hz ─┴─ Webtronics EQAMP (±10 V out) ──── 47 nF C0G ────────── ADS131M02 ── SPI ── N8R8
                                                                    CLKIN 8.192 MHz     web, OTA, console
 ```
 

@@ -2,7 +2,7 @@
 
 Vlad Patoka, VE3VPT. Revision November 2026.
 
-This document is the design basis for the vseismo digitizer: an ADS131M02 delta-sigma ADC read by an ESP32-C5, behind a Webtronics EQAMP and two L-15B geophones. It covers the signal chain, the converter and its configuration, how samples are acquired and accounted for, the decimating filter, and the timing system that puts a UTC time on every output sample. Each part states the theory first, then what the firmware does with it, then the numbers.
+This document is the design basis for the vseismo digitizer: an ADS131M02 delta-sigma ADC read by an ESP32-C5, behind a Webtronics EQAMP and two 4.5 Hz geophones (vertical and horizontal). It covers the signal chain, the converter and its configuration, how samples are acquired and accounted for, the decimating filter, and the timing system that puts a UTC time on every output sample. Each part states the theory first, then what the firmware does with it, then the numbers.
 
 Notation: $f_\text{CLKIN}$ is the ADC master clock, $f_\text{MOD}$ the modulator rate, $f_s$ the ADC output data rate (the firmware's input rate), $D$ the decimation factor, $f_\text{out} = f_s / D$ the station output rate, $N$ the FIR length, $T_s = 1/f_s$.
 
@@ -13,13 +13,13 @@ Default operating point used for every worked number: $f_\text{CLKIN}$ = 8.192 M
 ## 1. Signal chain
 
 ```
-L-15B Z ─┐                               9.1k / 1.0k 0.1 %
-L-15B H ─┴─ Webtronics EQAMP ─────────── 47 nF C0G ───────── ADS131M02 ── SPI ── ESP32-C5
+Z 4.5Hz ─┐                               9.1k / 1.0k 0.1 %
+H 4.5Hz ─┴─ Webtronics EQAMP ─────────── 47 nF C0G ───────── ADS131M02 ── SPI ── ESP32-C5
             ±10 V out, 20 Hz LP,                              CLKIN 8.192 MHz
             0.05 Hz HP
 ```
 
-- Geophone: L-15B, 4.5 Hz natural frequency, velocity output above it.
+- Geophones: 4.5 Hz moving-coil elements, velocity output above the natural frequency. On this station a vintage Lipe Resistance Products element (vertical, about 380 Ω) and an LGT-4.5H (horizontal). Sensitivity and damping are measured per element and set as `chN_sens`.
 - Amplifier: LT1007 input stage, LF411 gain trim, an LF444 8-pole low-pass (the 10 Hz build, -3 dB near 8.7 Hz; the schematics also show an 18 Hz build with a TL074), a 1-pole high-pass, and an NE5534 output driver, ±10 V full swing. At gain ×1000 the analog chain reaches about 105 to 110 dB of dynamic range, which sets the bar for the converter.
 - Divider: 9.1 kΩ over 1.0 kΩ, 0.1 %, gain 0.0990. ±10 V becomes ±0.99 V, and a ±12 V rail clip still stays inside the ±1.2 V converter full scale at PGA 1.
 - RC: 47 nF C0G across the 1.0 kΩ leg. The source resistance is the parallel combination, 901 Ω, so the pole is at
