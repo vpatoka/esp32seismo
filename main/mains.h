@@ -4,8 +4,9 @@
  * @file mains.h
  * @brief Mains (60 Hz) frequency from a zero-cross edge on MAINS_ZC_GPIO.
  *
- * A transformer at the mains end of the enclosure feeds a comparator or opto
- * front end; its rising edge reaches carrier P8-2 (GPIO3). Each edge is timed
+ * A transformer at the mains end of the enclosure feeds a TLV3501 comparator
+ * front end on 3.3 V; its push-pull rising edge reaches carrier P8-2 (GPIO3)
+ * through a 1k series resistor. Each edge is timed
  * on the acquisition MCPWM capture timer when capture=mcpwm (the same counter
  * as DRDY and the 1 Hz reference), otherwise by a GPIO interrupt reading
  * esp_timer. A task fits the period once a second and corrects it for the ESP

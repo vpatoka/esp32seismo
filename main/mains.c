@@ -345,7 +345,7 @@ esp_err_t mains_init(void)
         const gpio_config_t io = {
             .pin_bit_mask = 1ULL << MAINS_ZC_GPIO,
             .mode = GPIO_MODE_INPUT,
-            .pull_up_en = GPIO_PULLUP_ENABLE,       /* open-collector front ends need it */
+            .pull_up_en = GPIO_PULLUP_ENABLE,       /* defined level with no detector fitted */
             .pull_down_en = GPIO_PULLDOWN_DISABLE,
             .intr_type = GPIO_INTR_POSEDGE,
         };
