@@ -84,6 +84,7 @@ The infrastructure (WiFi on 2.4 and 5 GHz, captive portal, OTA with rollback, US
 - **Three ADC clock paths**: external oscillator, crystal-derived LEDC, or the stock LTC6903
 - **Rate measurement** against a GPS PPS or DS3231 1 Hz edge: a least-squares fit over 300 edges, to about 0.01 ppm, with its own uncertainty
 - **Hardware edge capture** (opt-in): DRDY and the 1 Hz edge latched by an MCPWM timer, free of interrupt jitter
+- **Mains frequency** (opt-in, `mains=1`): 60 Hz zero-cross on GPIO3, timed on the same capture timer, with grid time error, dip counting and a storm breaker that keeps a noisy input away from acquisition
 - **22 minutes of history** in PSRAM, with catch-up reads for a recorder that fell behind
 - **Tuning page**: live drum-recorder trace, per-channel readouts in counts, µV, mV and µm/s, a noise spectrum, settings, bench tests
 - **Bench tests** without a soldering iron: shorted inputs, test levels, offset zero, filter sync
@@ -241,7 +242,9 @@ C only, native IDF APIs, no Arduino, no managed components.
 | lwIP tcpip | 18 | IDF, SNTP callback |
 | Timebase | 10 | 1 Hz rate fit, PPS timestamp model, sample-clock slew, DS3231 (owns I2C), prints the acquisition log lines |
 | httpd | default | API and page |
-| Captive DNS, button, LED | 5, 4, 2 | Housekeeping |
+| Captive DNS, button | 5, 4 | Housekeeping |
+| Mains (with `mains=1`) | 3 | Zero-cross period fit, grid time error, dips, storm breaker service |
+| LED | 2 | Housekeeping |
 
 - **One owner per peripheral:** acquisition owns SPI, timebase owns I2C.
 - **ISRs only timestamp, count and notify,** from IRAM, and keep running through flash writes. Every DRDY edge is counted, so a sample read late or failing its CRC is held and flagged rather than dropped, and the sample count stays on the true grid.
@@ -304,7 +307,7 @@ vseismo> sync
 | Class | Bits | Behaviour |
 |---|---|---|
 | A | Abnormal reset, I2C init, task init | Latched until reboot, solid red LED, blocks the OTA self-test |
-| Process | ADC missing, RTC missing or lost power, I2C recovered, 1 Hz reference lost, CRC errors, overruns, clipping, no wall-clock time, ADC reset or resynced on its own | Web page and log, clear when the cause clears |
+| Process | ADC missing, RTC missing or lost power, I2C recovered, 1 Hz reference lost, CRC errors, overruns, clipping, no wall-clock time, ADC reset or resynced on its own, mains input switched off by the storm breaker | Web page and log, clear when the cause clears |
 
 A missing ADC is deliberately a process fault, so a bare DevKit can still take firmware updates.
 
@@ -345,6 +348,7 @@ curl --data-binary @vseismo.cfg http://vseismo/api/config/import
 | Acquisition | `clk_src`, `clk_hz`, `osr`, `decim`, `taps` |
 | Per channel (N = 0, 1) | `chN_name`, `chN_pga`, `chN_phase`, `chN_gcal`, `chN_ocal`, `chN_div`, `chN_amp`, `chN_sens` |
 | Timing | `ref`, `ref_edge`, `rtc`, `capture` |
+| Mains | `mains` (own NVS key, outside the blob, so an OTA rollback keeps the config) |
 | Station | `station`, `network` |
 | Network | `hostname`, `port`, `login`, `user`, `pass` |
 
@@ -356,6 +360,7 @@ curl --data-binary @vseismo.cfg http://vseismo/api/config/import
 | `main/ads131m0x.c` | ADS131M0x driver, CRC check, LTC6903 programming and power-down |
 | `main/acq.c` | DRDY interrupt and MCPWM capture, acquisition task, clock paths, FIR, output ring, statistics |
 | `main/timebase.c` | SNTP, DS3231 holdover, 1 Hz rate fit, PPS timestamp model, slewed sample clock |
+| `main/mains.c` | Optional mains zero-cross on GPIO3: edge capture, storm breaker, 60 Hz period fit, grid time error |
 | `main/web_server.c` | Config, HTTP API, OTA writer, captive portal routes |
 | `main/console.c` | USB console |
 | `main/captive_dns.c`, `event_log.c`, `ds323x.c` | Shared with esp32nixie |

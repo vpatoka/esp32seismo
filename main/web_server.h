@@ -96,6 +96,7 @@ typedef struct {
     uint32_t wifi_disconnects;      /* since boot */
     uint8_t  wifi_last_reason;      /* wifi_err_reason_t of the last one, 0 = none */
     uint32_t stack_acq, stack_timebase, stack_httpd, stack_tcpip, stack_wifi;
+    uint32_t stack_mains;           /* 0 unless mains=1 */
 } seismo_hw_t;
 
 void seismo_hw_get(seismo_hw_t *out);
@@ -109,10 +110,20 @@ void      config_wifi_reset(void);      /* does not return */
 /** @brief Acquisition settings derived from the config. */
 void      config_to_acq(const seismo_config_t *c, acq_settings_t *s);
 
+/* ── Settings outside the blob ────────────────────────────────────────────
+ * "mains" lives in its own NVS key (NVS_KEY_MAINS, u8) and not in
+ * seismo_config_t, so the blob size and version stay put: firmware without
+ * the mains module keeps its whole config on an OTA rollback. config_load()
+ * reads it, config_set_kv() stages it, config_commit() writes it. */
+#define NVS_KEY_MAINS          "mains"
+
+/** @brief Stored mains setting, as loaded at boot or last committed. */
+bool      config_mains_enabled(void);
+
 /* ── Settings by name ─────────────────────────────────────────────────────
  * One code path for the HTTP API, config import and the USB console.
  * General keys: hostname, port, login, user, pass, station, network,
- *   clk_src, clk_hz, osr, decim, taps, ref, ref_edge, rtc
+ *   clk_src, clk_hz, osr, decim, taps, ref, ref_edge, rtc, capture, mains
  * Per channel (N = 0 or 1): chN_name, chN_pga, chN_phase, chN_gcal,
  *   chN_ocal, chN_div, chN_amp, chN_sens
  * WiFi (import and console only): wifi_ssid, wifi_pass

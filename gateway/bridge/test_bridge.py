@@ -320,6 +320,48 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(sum(json.loads(l)["wave"]["n"] for l in lines), 1500)
 
 
+class MainsMetricsTest(unittest.TestCase):
+    """poll_status maps /api/status mains to gauges, and leaves them out when off."""
+
+    class Station:
+        def __init__(self, status):
+            self.status = status
+
+        def get(self, path):
+            return self.status
+
+    def poll(self, status):
+        b = bridge.Bridge.__new__(bridge.Bridge)     # poll_status needs only these two
+        b.station = self.Station(status)
+        b.metrics = bridge.Metrics()
+        b.poll_status()
+        return b.metrics
+
+    def test_enabled(self):
+        m = self.poll({"hw": {}, "ref": {}, "time": {},
+                       "mains": {"enabled": True, "present": True, "freq_hz": 60.0012,
+                                 "freq_avg_60s": 59.9987, "time_error_ms": 41.6, "dips": 2,
+                                 "missed": 1, "storm_trips": 0}})
+        self.assertEqual(m.v["mains_present"], 1)
+        self.assertEqual(m.v["mains_freq_hz"], 60.0012)
+        self.assertEqual(m.v["mains_freq_avg_60s_hz"], 59.9987)
+        self.assertEqual(m.v["mains_time_error_ms"], 41.6)
+        self.assertEqual(m.v["mains_dips"], 2)
+        self.assertEqual(m.v["mains_missed"], 1)
+        self.assertEqual(m.v["mains_storm_trips"], 0)
+        self.assertIn("vseismo_mains_freq_hz 60.0012", m.text())
+
+    def test_null_frequency_left_out(self):
+        m = self.poll({"mains": {"enabled": True, "present": False, "freq_hz": None}})
+        self.assertEqual(m.v["mains_present"], 0)
+        self.assertNotIn("vseismo_mains_freq_hz", m.text())
+
+    def test_disabled_or_old_firmware(self):
+        for status in ({"mains": {"enabled": False, "present": False}}, {}):
+            text = self.poll(status).text()
+            self.assertNotIn("vseismo_mains_", text)
+
+
 class FlagRunsTest(unittest.TestCase):
     def test_runs(self):
         self.assertEqual(bridge.flag_runs([0, 0, 1, 1, 0], 5), [(0, 2, 0), (2, 4, 1), (4, 5, 0)])

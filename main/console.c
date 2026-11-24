@@ -63,9 +63,9 @@ static int cmd_status(int argc, char **argv)
     } else {
         printf("psram      none\n");
     }
-    printf("stack free acq %lu, timebase %lu, httpd %lu, tcpip %lu, wifi %lu bytes\n",
+    printf("stack free acq %lu, timebase %lu, httpd %lu, tcpip %lu, wifi %lu, mains %lu bytes\n",
            (unsigned long)hw.stack_acq, (unsigned long)hw.stack_timebase, (unsigned long)hw.stack_httpd,
-           (unsigned long)hw.stack_tcpip, (unsigned long)hw.stack_wifi);
+           (unsigned long)hw.stack_tcpip, (unsigned long)hw.stack_wifi, (unsigned long)hw.stack_mains);
     printf("station    %s.%s\n", g_config.network, g_config.station);
 
     printf("adc        %s, ID 0x%04X, clock %s, %lu Hz on CLKIN\n",

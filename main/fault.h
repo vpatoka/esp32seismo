@@ -36,6 +36,8 @@ typedef enum {
     FAULT_ADC_CLIP        = 1u << 14,  /* a channel hit full scale in the last second */
     FAULT_NO_TIME         = 1u << 15,  /* no SNTP sync yet: timestamps are relative  */
     FAULT_ADC_STATUS      = 1u << 16,  /* ADC reset itself or resynced on its own     */
+    FAULT_MAINS_STORM     = 1u << 17,  /* mains zero-cross input switched off by the
+                                          storm breaker; process fault on purpose    */
 } fault_id_t;
 
 /* A missing ADC is a process fault on purpose: firmware tested on a bare

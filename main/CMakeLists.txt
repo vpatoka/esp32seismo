@@ -12,6 +12,7 @@ idf_component_register(
         "ads131m0x.c"
         "acq.c"
         "timebase.c"
+        "mains.c"
     INCLUDE_DIRS
         "."
     EMBED_FILES

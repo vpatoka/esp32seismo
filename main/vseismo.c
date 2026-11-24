@@ -58,6 +58,7 @@
 #include "sdkconfig.h"
 
 #include "acq.h"
+#include "mains.h"
 #include "captive_dns.h"
 #include "console.h"
 #include "event_log.h"
@@ -585,6 +586,7 @@ void seismo_hw_get(seismo_hw_t *o)
     o->stack_httpd    = stack_free("httpd");
     o->stack_tcpip    = stack_free("tiT");
     o->stack_wifi     = stack_free("wifi");
+    o->stack_mains    = stack_free("mains");
 }
 
 static i2c_master_bus_handle_t i2c_bus_init(void)
@@ -663,6 +665,13 @@ void app_main(void)
     i2c_master_bus_handle_t bus = use_rtc ? i2c_bus_init() : NULL;
     if (timebase_init((tb_ref_t)g_config.ref, g_config.ref_rising, use_rtc, bus) != ESP_OK) {
         fault_raise(FAULT_INIT_TASK);
+    }
+
+    /* Mains zero-cross, optional. After timebase so DRDY and the 1 Hz
+     * reference hold their capture channels first. A failure here is logged
+     * and left alone: it is not worth an OTA rollback or a Class-A fault. */
+    if (config_mains_enabled() && mains_init() != ESP_OK) {
+        ESP_LOGE(TAG, "Mains zero-cross not started");
     }
 
     ota_selftest_begin();

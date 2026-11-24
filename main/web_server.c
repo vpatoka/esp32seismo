@@ -20,6 +20,7 @@
 #include "event_log.h"
 #include "fault.h"
 #include "io_map.h"
+#include "mains.h"
 #include "timebase.h"
 
 #include <math.h>
@@ -56,8 +57,35 @@ static volatile bool s_ota_active;
 static StaticSemaphore_t s_cfg_mutex_buf;
 static SemaphoreHandle_t s_cfg_mutex;
 
-void config_lock(void)   { if (s_cfg_mutex) xSemaphoreTake(s_cfg_mutex, portMAX_DELAY); }
-void config_unlock(void) { if (s_cfg_mutex) xSemaphoreGive(s_cfg_mutex); }
+/* "mains" is kept outside the blob (see web_server.h). Every config_set_kv()
+ * caller holds the config lock around its parse and commit, so a value
+ * staged by the parser lives only inside one lock session: taking or giving
+ * the lock drops whatever an abandoned session left behind. */
+static uint8_t s_mains_stored;            /* NVS value, 0 = off */
+static int8_t  s_mains_staged = -1;       /* -1 = nothing staged */
+
+void config_lock(void)
+{
+    if (s_cfg_mutex) xSemaphoreTake(s_cfg_mutex, portMAX_DELAY);
+    s_mains_staged = -1;
+}
+
+void config_unlock(void)
+{
+    s_mains_staged = -1;
+    if (s_cfg_mutex) xSemaphoreGive(s_cfg_mutex);
+}
+
+bool config_mains_enabled(void)
+{
+    return s_mains_stored != 0;
+}
+
+/* Value the parser and the exports should show: staged if any, else stored. */
+static uint8_t mains_effective(void)
+{
+    return s_mains_staged >= 0 ? (uint8_t)s_mains_staged : s_mains_stored;
+}
 
 static const char *const s_clk_names[] = { "ext", "ledc", "ltc6903" };
 
@@ -168,6 +196,10 @@ esp_err_t config_load(void)
             config_set_defaults();
         }
     }
+    /* Separate key: a missing or unreadable value is just "off", and it never
+     * affects the blob above. */
+    uint8_t mains = 0;
+    if (nvs_get_u8(nvs, NVS_KEY_MAINS, &mains) == ESP_OK && mains <= 1) s_mains_stored = mains;
     nvs_close(nvs);
     config_sanitize();
     ESP_LOGI(TAG, "Config loaded: host=%s clk=%s osr=%u decim=%u ref=%s wifi=%s",
@@ -570,6 +602,10 @@ esp_err_t config_set_kv(seismo_config_t *c, const char *key, const char *v,
         if (m < 0) { *err = "capture: isr or mcpwm"; goto bad; }
         if (c->capture != m) *reboot = true;
         c->capture = (uint8_t)m;
+    } else if (strcmp(key, "mains") == 0) {
+        if (!parse_bool(v, &b)) { *err = "mains: 0 or 1"; goto bad; }
+        if (mains_effective() != b) *reboot = true;
+        s_mains_staged = (int8_t)b;
     } else if (allow_wifi && strcmp(key, "wifi_ssid") == 0) {
         if (!v[0] || strlen(v) > 32) { *err = "wifi_ssid: 1-32 bytes"; goto bad; }
         if (strcmp(v, c->wifi_ssid) != 0) *reboot = true;
@@ -593,6 +629,22 @@ esp_err_t config_commit(const seismo_config_t *c, bool acq_changed)
 {
     g_config = *c;
     esp_err_t err = config_save();
+    if (err == ESP_OK && s_mains_staged >= 0 && (uint8_t)s_mains_staged != s_mains_stored) {
+        nvs_handle_t nvs;
+        err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs);
+        if (err == ESP_OK) {
+            err = nvs_set_u8(nvs, NVS_KEY_MAINS, (uint8_t)s_mains_staged);
+            if (err == ESP_OK) err = nvs_commit(nvs);
+            nvs_close(nvs);
+        }
+        if (err == ESP_OK) {
+            s_mains_stored = (uint8_t)s_mains_staged;
+            ESP_LOGI(TAG, "mains=%u saved, takes effect after a reboot", s_mains_stored);
+        } else {
+            ESP_LOGE(TAG, "mains save: %s", esp_err_to_name(err));
+        }
+    }
+    s_mains_staged = -1;
     if (err == ESP_OK) {
         ESP_LOGI(TAG, "Config updated: clk=%s %lu Hz osr=%u decim=%u taps=%u pga=%u/%u%s",
                  s_clk_names[g_config.clk_src], (unsigned long)g_config.clk_hz, g_config.osr,
@@ -617,14 +669,14 @@ int config_export_text(char *out, size_t cap)
         "hostname=%s\nport=%u\nlogin=%u\nuser=%s\n"
         "station=%s\nnetwork=%s\n"
         "clk_src=%s\nclk_hz=%lu\nosr=%u\ndecim=%u\ntaps=%u\n"
-        "ref=%s\nref_edge=%s\nrtc=%u\ncapture=%s\n",
+        "ref=%s\nref_edge=%s\nrtc=%u\ncapture=%s\nmains=%u\n",
         SEISMO_API_VERSION, app->version,
         g_config.hostname, g_config.http_port, g_config.weblogin_enabled, g_config.username,
         g_config.station, g_config.network,
         s_clk_names[g_config.clk_src], (unsigned long)g_config.clk_hz, g_config.osr,
         g_config.decim, g_config.taps,
         timebase_ref_name((tb_ref_t)g_config.ref), g_config.ref_rising ? "rise" : "fall", g_config.rtc,
-        capture_name(g_config.capture));
+        capture_name(g_config.capture), s_mains_stored);
     for (int c = 0; c < ACQ_NCH && n > 0 && (size_t)n < cap; c++) {
         const seismo_ch_cfg_t *ch = &g_config.ch[c];
         n += snprintf(out + n, cap - (size_t)n,
@@ -734,7 +786,7 @@ static esp_err_t api_status_handler(httpd_req_t *req)
 
     seismo_hw_t hw;
     seismo_hw_get(&hw);
-    char hwb[720];
+    char hwb[768];
     int m = snprintf(hwb, sizeof(hwb),
         ",\"hw\":{\"cpu_mhz\":%lu,\"cores\":%u,\"chip_rev\":\"v%u.%u\",\"flash\":\"%s\","
         "\"mac\":\"" MACSTR "\",\"reset\":\"%s\","
@@ -742,7 +794,8 @@ static esp_err_t api_status_handler(httpd_req_t *req)
         "\"psram_free\":%lu,\"psram_min\":%lu,\"psram_largest\":%lu,\"psram_total\":%lu},"
         "\"radio\":{\"up\":%s,\"rssi\":%d,\"ch\":%u,\"bssid\":\"" MACSTR "\",\"phy\":\"%s\","
         "\"tx_power_dbm\":%.2f,\"disconnects\":%lu,\"last_reason\":%u},"
-        "\"stack_free\":{\"acq\":%lu,\"timebase\":%lu,\"httpd\":%lu,\"tcpip\":%lu,\"wifi\":%lu}}}",
+        "\"stack_free\":{\"acq\":%lu,\"timebase\":%lu,\"httpd\":%lu,\"tcpip\":%lu,\"wifi\":%lu,"
+        "\"mains\":%lu}}}",
         (unsigned long)hw.cpu_mhz, hw.cores, hw.chip_rev / 100, hw.chip_rev % 100, CONFIG_ESPTOOLPY_FLASHSIZE,
         MAC2STR(hw.mac), hw.reset_reason,
         (unsigned long)hw.int_free, (unsigned long)hw.int_min, (unsigned long)hw.int_largest,
@@ -751,11 +804,34 @@ static esp_err_t api_status_handler(httpd_req_t *req)
         hw.wifi_up ? "true" : "false", hw.rssi, hw.channel, MAC2STR(hw.bssid), hw.phy,
         (double)hw.tx_power_dbm, (unsigned long)hw.wifi_disconnects, hw.wifi_last_reason,
         (unsigned long)hw.stack_acq, (unsigned long)hw.stack_timebase, (unsigned long)hw.stack_httpd,
-        (unsigned long)hw.stack_tcpip, (unsigned long)hw.stack_wifi);
+        (unsigned long)hw.stack_tcpip, (unsigned long)hw.stack_wifi, (unsigned long)hw.stack_mains);
     if (m < 0 || m >= (int)sizeof(hwb)) return send_json_err(req, "status overflow");
+
+    mains_status_t ms;
+    mains_get_status(&ms);
+    char mf[24], ma[24], mlo[24], mhi[24], mte[24];
+    num(mf, sizeof(mf), ms.enabled ? ms.freq_hz : NAN, 5);
+    num(ma, sizeof(ma), ms.enabled ? ms.freq_avg_hz : NAN, 5);
+    num(mlo, sizeof(mlo), ms.enabled ? ms.freq_min_hz : NAN, 5);
+    num(mhi, sizeof(mhi), ms.enabled ? ms.freq_max_hz : NAN, 5);
+    num(mte, sizeof(mte), ms.enabled && ms.time_error_valid ? ms.time_error_ms : NAN, 1);
+    char mb[480];
+    int k = snprintf(mb, sizeof(mb),
+        ",\"mains\":{\"enabled\":%s,\"capture\":\"%s\",\"present\":%s,\"freq_hz\":%s,"
+        "\"freq_avg_60s\":%s,\"freq_min_60s\":%s,\"freq_max_60s\":%s,\"corrected\":%s,"
+        "\"time_error_ms\":%s,\"anchor_age_s\":%lld,\"cycles\":%llu,\"missed\":%lu,\"glitches\":%lu,"
+        "\"dips\":%lu,\"last_dip_ms\":%lu,\"storm_trips\":%lu,\"storm_latched\":%s}",
+        ms.enabled ? "true" : "false", ms.enabled ? (ms.capture_hw ? "mcpwm" : "isr") : "",
+        ms.present ? "true" : "false", mf, ma, mlo, mhi, ms.corrected ? "true" : "false",
+        mte, (long long)(ms.enabled ? ms.anchor_age_s : -1), (unsigned long long)ms.cycles,
+        (unsigned long)ms.missed, (unsigned long)ms.glitches, (unsigned long)ms.dips,
+        (unsigned long)ms.last_dip_ms, (unsigned long)ms.storm_trips,
+        ms.storm_latched ? "true" : "false");
+    if (k < 0 || k >= (int)sizeof(mb)) return send_json_err(req, "status overflow");
 
     set_json_headers(req);
     httpd_resp_send_chunk(req, buf, n);
+    httpd_resp_send_chunk(req, mb, k);
     httpd_resp_send_chunk(req, hwb, m);
     return httpd_resp_send_chunk(req, NULL, 0);
 }
@@ -991,12 +1067,13 @@ static esp_err_t api_config_get_handler(httpd_req_t *req)
     int n = snprintf(buf, 1536,
         "{\"ok\":true,\"api\":%d,\"hostname\":\"%s\",\"port\":%u,\"login\":%u,\"user\":\"%s\","
         "\"station\":\"%s\",\"network\":\"%s\",\"clk_src\":\"%s\",\"clk_hz\":%lu,\"osr\":%u,"
-        "\"decim\":%u,\"taps\":%u,\"ref\":\"%s\",\"ref_edge\":\"%s\",\"rtc\":%u,\"capture\":\"%s\",\"ch\":[",
+        "\"decim\":%u,\"taps\":%u,\"ref\":\"%s\",\"ref_edge\":\"%s\",\"rtc\":%u,\"capture\":\"%s\","
+        "\"mains\":%u,\"ch\":[",
         SEISMO_API_VERSION, host, g_config.http_port, g_config.weblogin_enabled, user,
         g_config.station, g_config.network, s_clk_names[g_config.clk_src],
         (unsigned long)g_config.clk_hz, g_config.osr, g_config.decim, g_config.taps,
         timebase_ref_name((tb_ref_t)g_config.ref), g_config.ref_rising ? "rise" : "fall", g_config.rtc,
-        capture_name(g_config.capture));
+        capture_name(g_config.capture), s_mains_stored);
     for (int c = 0; c < ACQ_NCH; c++) {
         const seismo_ch_cfg_t *ch = &g_config.ch[c];
         char name[20];
@@ -1022,7 +1099,7 @@ static esp_err_t api_config_post_handler(httpd_req_t *req)
 
     static const char *const keys[] = {
         "hostname", "port", "login", "user", "pass", "station", "network",
-        "clk_src", "clk_hz", "osr", "decim", "taps", "ref", "ref_edge", "rtc", "capture",
+        "clk_src", "clk_hz", "osr", "decim", "taps", "ref", "ref_edge", "rtc", "capture", "mains",
         "ch0_name", "ch0_pga", "ch0_phase", "ch0_gcal", "ch0_ocal", "ch0_div", "ch0_amp", "ch0_sens",
         "ch1_name", "ch1_pga", "ch1_phase", "ch1_gcal", "ch1_ocal", "ch1_div", "ch1_amp", "ch1_sens",
     };

@@ -553,6 +553,17 @@ class Bridge:
         m.set("station_adc_ppm", ref.get("adc_ppm"))
         m.set("station_ntp_age_seconds", tm.get("ntp_age"))
         m.set("station_slew_ms", tm.get("slew_ms"))
+        # Mains zero-cross: only exported while the station runs it (mains=1).
+        # None (JSON null, or absent) leaves a gauge out of the scrape.
+        mains = s.get("mains") or {}
+        on = bool(mains.get("enabled"))
+        m.set("mains_present", (1 if mains.get("present") else 0) if on else None)
+        m.set("mains_freq_hz", mains.get("freq_hz") if on else None)
+        m.set("mains_freq_avg_60s_hz", mains.get("freq_avg_60s") if on else None)
+        m.set("mains_time_error_ms", mains.get("time_error_ms") if on else None)
+        m.set("mains_dips", mains.get("dips") if on else None)
+        m.set("mains_missed", mains.get("missed") if on else None)
+        m.set("mains_storm_trips", mains.get("storm_trips") if on else None)
 
 
 def main():

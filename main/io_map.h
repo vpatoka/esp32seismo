@@ -75,6 +75,9 @@
 /* ── 1 Hz timing reference: GPS PPS or DS3231 SQW (open drain) ────────── */
 #define REF_1HZ_GPIO            GPIO_NUM_23   /* internal pull-up on; add 4.7k for SQW */
 
+/* ── Mains zero-cross (optional, setting "mains"): carrier P8-2 ────────── */
+#define MAINS_ZC_GPIO           GPIO_NUM_3    /* MTDI strap: SDIO edge only, free */
+
 /* ── I2C bus: optional DS3231 / DS3231M / DS3232 holdover RTC ──────────── */
 #define I2C_SDA_GPIO            GPIO_NUM_4
 #define I2C_SCL_GPIO            GPIO_NUM_5
@@ -115,6 +118,7 @@
 #define PRIO_TIMEBASE           10
 #define PRIO_CAPTIVE_DNS        5
 #define PRIO_BUTTON             4
+#define PRIO_MAINS              3             /* below everything that touches samples */
 #define PRIO_STATUS_LED         2
 
 #endif /* IO_MAP_H */

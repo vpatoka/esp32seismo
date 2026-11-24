@@ -85,7 +85,7 @@ curl -s http://vseismo/api/status | jq .hw
         "psram_free":5242880,"psram_min":5242880,"psram_largest":5177344,"psram_total":8388608},
  "radio":{"up":true,"rssi":-52,"ch":6,"bssid":"02:00:00:00:00:02","phy":"11ax",
           "tx_power_dbm":20.00,"disconnects":0,"last_reason":0},
- "stack_free":{"acq":2100,"timebase":1500,"httpd":4800,"tcpip":1900,"wifi":3000}}
+ "stack_free":{"acq":2100,"timebase":1500,"httpd":4800,"tcpip":1900,"wifi":3000,"mains":0}}
 ```
 
 The top-level `heap` and `heap_min` stay as they were: internal RAM and PSRAM added together. They say little on this board, because the 3 MB output ring sits in PSRAM. Watch `hw.mem.int_*` instead.
@@ -102,7 +102,35 @@ The top-level `heap` and `heap_min` stay as they were: internal RAM and PSRAM ad
 | `radio.rssi`, `radio.ch`, `radio.bssid`, `radio.phy` | dBm, , , | Signal, channel, AP radio and protocol (`11ax`, `11ac`, `11n`, `11g`, `11b`). Empty while not associated. |
 | `radio.tx_power_dbm` | dBm | Configured maximum transmit power |
 | `radio.disconnects`, `radio.last_reason` | | Station disconnects since boot, and the IDF `wifi_err_reason_t` code of the last one (0 = none yet) |
-| `stack_free.*` | bytes | Least free stack each task has had since boot (0 = task not running) |
+| `stack_free.*` | bytes | Least free stack each task has had since boot (0 = task not running; `mains` is 0 unless `mains=1`) |
+
+## /api/status: mains
+
+Mains frequency from a zero-cross edge on GPIO3 (carrier P8-2), with `mains=1`. Never in the sample path.
+
+```
+curl -s http://vseismo/api/status | jq .mains
+{"enabled":true,"capture":"mcpwm","present":true,"freq_hz":60.00123,
+ "freq_avg_60s":59.99871,"freq_min_60s":59.99102,"freq_max_60s":60.00611,"corrected":true,
+ "time_error_ms":41.6,"anchor_age_s":3600,"cycles":216000,"missed":0,"glitches":0,
+ "dips":0,"last_dip_ms":0,"storm_trips":0,"storm_latched":false}
+```
+
+| Field | Unit | Meaning |
+|---|---|---|
+| `enabled` | | The module runs (`mains=1` at boot and the edge path came up). Everything below is zero or null when `false`. |
+| `capture` | | `mcpwm`: rising edge latched on the acquisition capture timer's third channel, same counter as DRDY. `isr`: GPIO interrupt reading esp_timer. Follows the `capture` setting, with a fallback to `isr` if the channel can't be added. |
+| `present` | | An edge in the last second and the input not switched off by the storm breaker |
+| `freq_hz` | Hz | Last 1 s least-squares fit of edge time on cycle number. `null` with fewer than 20 edges in the second or outside 45 to 75 Hz. |
+| `freq_avg_60s`, `freq_min_60s`, `freq_max_60s` | Hz | Over the valid 1 s values of the last 60 s |
+| `corrected` | | `freq_hz` corrected for the ESP crystal with `ref.esp_ppm` (needs `ref.rate_valid`). Without it, the crystal's own error (tens of ppm) stays in. Against `ref=rtc` the correction is as good as the DS3231, about 1 ppm. |
+| `time_error_ms` | ms | Grid time minus UTC since the anchor: cycles / 60 less elapsed UTC. Positive means the grid is ahead. It starts at 0 at the anchor and resets after a dip, a storm trip, loss of edges or a reboot, so it is the drift since then, not the operator's absolute time error. `null` before the first anchor (needs wall-clock time). |
+| `anchor_age_s` | s | Since the time-error anchor, -1 = none |
+| `cycles` | | Counted since boot. A gap of k periods (k up to 6, under 100 ms) counts k. |
+| `missed` | | Edges inferred inside such gaps |
+| `glitches` | | Edges less than 12 ms after the previous one, ignored |
+| `dips`, `last_dip_ms` | , ms | Gaps of 100 ms up to about 1 s, and the length of the last one. A gap that reaches a once-a-second check shows as `present: false` and a log line instead. The station runs off the mains it measures, so only dips shorter than the supply's hold-up time can show here; a longer outage is a reboot with reset reason `power-on` or `brownout`. |
+| `storm_trips`, `storm_latched` | | Storm breaker: more than 30 edges in 100 ms (6 is normal) switches the GPIO3 input off from inside the ISR, so a noisy input can't starve acquisition. It comes back on after 30 s; after 3 trips it stays off until reboot (`storm_latched`). Each trip raises fault bit 17, a process fault, cleared after 60 s of clean running. |
 
 ## /api/wave
 
@@ -197,6 +225,7 @@ curl 'http://vseismo/api/wave?since=118000&max=1000&order=oldest'
 | `ref_edge` | `rise`, `fall` | Reboot. GPS PPS marks the second on its rising edge. A DS3231 SQW rolls its seconds over on the falling edge, but the rate fit works on either, so for `ref=rtc` the choice only shows in the edge phase. |
 | `rtc` | 0, 1 | Reboot. Implied by `ref=rtc`: the SQW only runs once the DS323x is configured, so with `ref=rtc` the RTC is driven (and `/api/status` `rtc.enabled` is `true`) whatever this value says. |
 | `capture` | `isr` (default), `mcpwm` | Reboot. How DRDY and 1 Hz reference edges are timed. `isr`: a GPIO interrupt reads esp_timer, about 10 µs of jitter under WiFi load. `mcpwm`: one MCPWM capture timer latches both edges in hardware at 6.25 ns, kept as µs (0.3 µs rms rounding). If the capture timer can't be set up, the station falls back to `isr`; `/api/acq` `capture` shows what is in use. |
+| `mains` | 0 (default), 1 | Reboot. Mains zero-cross on GPIO3, see `/api/status: mains`. Stored in its own NVS key, not in the config blob, so firmware without it keeps its whole config on an OTA rollback. Factory reset clears it. |
 | `chN_name` | 1-7 characters | Immediate |
 | `chN_pga` | 1, 2, 4 .. 128 | Restarts acquisition |
 | `chN_phase` | -512..511 modulator clocks | Restarts acquisition |
