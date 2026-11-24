@@ -83,7 +83,7 @@ Screw terminals are Phoenix MKDS 1,5 at 5.08 mm. Module sockets and jumper heade
 | P4 | 1 AIN0+, 2 AIN0− | To the Click TB1, same order as TB1 |
 | P5 | 1 AIN1−, 2 AIN1+ | To the Click TB2, same order as TB2, so the pair doesn't cross |
 | P7 | 1 +5V, 2 GND, 3 PPS | GPS module power and PPS |
-| P8 | 1 IO2, 2 IO3, 3 +3V3, 4 GND | Spare GPIO |
+| P8 | 1 IO2, 2 IO3, 3 +3V3, 4 GND | 2: mains zero-cross in. 1: spare, leave unconnected or give it a signal that idles high (MTMS strap, see the pin table) |
 | J1, J3 | 2 × 1x16 female | ESP32-C5-DevKitC-1 v1.2 |
 | J4, J5 | 2 × 1x8 female, mikroBUS pattern | ADC 15 Click |
 | J2 | 1x6 female | ZS-042: 32K, SQW, SCL, SDA, VCC, GND |
@@ -95,8 +95,8 @@ Screw terminals are Phoenix MKDS 1,5 at 5.08 mm. Module sockets and jumper heade
 | Header pin | Signal | Net | Goes to |
 |---|---|---|---|
 | J1-1 | 3V3 | +3V3 | J2 VCC, R40/R41/R44, P8-3 |
-| J1-3 | GPIO2 | SPARE_IO2 | P8-1 |
-| J1-4 | GPIO3 | SPARE_IO3 | P8-2 |
+| J1-3 | GPIO2 | SPARE_IO2 | P8-1. MTMS strap: crystal select in Joint Download Boot only (0 = 40 MHz, 1 = 48 MHz), so keep it high or high-impedance at reset or flashing can fail |
+| J1-4 | GPIO3 | SPARE_IO3 | P8-2, mains zero-cross. MTDI strap: SDIO edge only, free in every boot mode we use |
 | J1-5 | GPIO0 | G0_SYNC | R15 → Click RST (SYNC/RESET) |
 | J1-6 | GPIO1 | G1_DRDY | R14 ← Click INT (DRDY) |
 | J1-7 | GPIO6 | G6_SCK | R10 → Click SCK |
@@ -286,53 +286,54 @@ The station lives in an uninsulated shed, so expect −30 °C winter nights, 40 
 
 ## Enclosure and DIN layout
 
-### Required enclosure
+### Enclosure in hand
 
-Use a prefabricated **400 × 300 × 180 mm external** (15.7 × 11.8 × 7.1 in) polycarbonate or ABS enclosure. This is the smallest practical class for the populated station. It must be IP66 or IP67 and have a removable insulated mounting plate.
+The box arrived (2026-11-23): the larger plastic class, nominally 19.7 × 15.7 × about 8 in. Measured:
 
-Exterior size alone is not a fit guarantee. Before ordering, obtain the dimensional drawing and require:
+- mounting plate **470 × 370 mm**
+- depth **190 mm** (taken as plate to closed lid; if that is the outside depth, the inside is still about 160 to 170 mm)
 
-- **365 × 273 mm minimum unobstructed mounting area**; **380 × 280 mm preferred**
-- **130 mm absolute minimum clear depth** from mounting plate to closed lid; **150 mm preferred**
-- no lid ribs, hinge hardware or molded bosses intruding into those volumes
-- a bottom wall with room for separated mains, field-cable and GNSS entries plus a membrane vent
-
-The mounting-field minimum comes from the real parts and service gaps:
+That is well over the minimum the populated station needs:
 
 - width: 10 + 198 EQAMP + 15 separation + 132 carrier + 10 = **365 mm**
 - height: 10 + 148 EQAMP + 15 separation + 90 DIN-device zone + 10 = **273 mm**
 - depth: 100 Mean Well projection + rail/backplate allowance + terminal bend and lid clearance = **about 132 to 150 mm**
 
-The nominal Joinfworld 15.7 × 11.8 × 7.1 in box is therefore the candidate, but reject it if its actual mounting plate is smaller than 365 × 273 mm or its clear depth is under 130 mm. Use the 19.7 × 15.7 × approximately 8 in plastic version if the smaller product misses either dimension. The 13 × 13 × 5 in and all approximately 4 in-deep versions are too small or too shallow. A metal 16 × 12 × 8 in box fits mechanically but needs a bonded protective-earth connection and an external WiFi antenna.
+So every board mounts flat on the plate. No stacking or mezzanine is needed, and the spare area goes into separation between the EQAMP and the mains end. The air volume is about 33 L against about 18 L for the 400 × 300 × 180 class, so the temperature rise from the LM7812 and the Mean Well is lower too.
 
-Prefer an opaque enclosure outdoors: a clear lid in sun adds solar heating. Do not use an openly vented weatherproof-box variant; use a sealed box with a hydrophobic pressure-equalization membrane vent and a desiccant pack.
+Keep it sealed: hydrophobic pressure-equalization membrane vent plus a desiccant pack, no openly vented variant. Opaque is better outdoors, since a clear lid in sun adds solar heating. Check that no lid ribs, hinge hardware or molded bosses reach into the board zones.
 
 ### Mounting-plate layout
 
-Reference layout on a 380 × 280 mm usable plate, coordinates from its upper-left corner:
+Layout on the 470 × 370 mm plate, coordinates from its upper-left corner:
 
 - EQAMP, 198 × 148 mm: `x=10, y=10`
-- carrier, 132 × 92 mm: `x=223, y=10`
+- carrier, 132 × 92 mm: `x=228, y=10` (20 mm gap). About 110 mm stays clear to the right wall for the DevKit antenna.
 - Huawei WD22UGRC GNSS board, 67.2 × 31.8 mm excluding the protruding SMB connector: below the carrier, in an approximately 90 × 50 mm service envelope
 - separate DS3232 development board: beside the GNSS board, in a provisional 60 × 50 mm envelope until the board in hand is measured
-- one horizontal TS35 rail across the lower device zone for the Mean Well supply, fuse/disconnect and terminal blocks
+- mains zero-cross module (small transformer plus front-end PCB), about 90 × 70 mm: `x≈370, y≈190`, at the mains end above the Mean Well, about 160 mm from the EQAMP.
+- spare, about 200 × 110 mm under the EQAMP: EQAMP channel 3 wiring, field-cable service loop, desiccant
+- one horizontal TS35 rail at about `y=300` across the lower device zone for the Mean Well supply, fuse/disconnect and terminal blocks
 
 ```
-┌──────────────────────── 380 × 280 mm usable plate ──────────────────────────────┐
-│  ┌──────────────────────────────┐   ┌────────────────────┐                      │
-│  │ Webtronics EQAMP             │   │ Seismo carrier     │  ← DevKit antenna    │
-│  │ 198 × 148, direct standoffs  │   │ 132 × 92, direct   │    toward plastic    │
-│  │ geophone inputs at left      │   │ standoffs          │    wall/clear area   │
-│  └──────────────────────────────┘   └────────────────────┘                      │
-│                                      [WD22UGRC] [DS3232]                        │
-│                                                                                 │
-│  TS35 ═══════════════════════════════════════════════════════════════════════    │
-│  [geophone terminals] ... [LV terminals] ... [Mean Well] [AC fuse/disconnect]   │
-│   sensitive end ◄──────── physical separation ───────────────► mains end         │
-│                                                                                 │
-│  bottom entries: field cable ........ GNSS coax ....... AC mains .... membrane   │
-└─────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────── 470 × 370 mm plate ─────────────────────────────┐
+│ ┌──────────────────────────┐  ┌────────────────┐                            │
+│ │ Webtronics EQAMP         │  │ Seismo carrier │  ← DevKit antenna,         │
+│ │ 198 × 148, standoffs     │  │ 132 × 92       │    ~110 mm keep-out        │
+│ │ geophone inputs at left  │  └────────────────┘                            │
+│ │                          │  [WD22UGRC] [DS3232]                           │
+│ └──────────────────────────┘                          ┌──────────────┐      │
+│   spare ~200 × 110                                    │ zero-cross   │      │
+│   (ch 3 wiring, service loop, desiccant)              │ xfmr + front │      │
+│                                                       └──────────────┘      │
+│ TS35 ═══════════════════════════════════════════════════════════════════    │
+│ [geophone terms] .. [LV terms] ............ [Mean Well] [AC fuse/disconnect]│
+│ sensitive end ◄─────────────── separation ──────────────────► mains end     │
+│ bottom entries: field cable ...... GNSS coax ......... AC mains .. membrane │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+- **Zero-cross module:** the transformer sits on the fused mains side at the far right. Only its low-voltage secondary goes to the front end, and only a slowed logic edge leaves it, on a twisted pair to carrier P8-2 (IO3). Route that pair along the bottom, never across the EQAMP or the P2 to P5 zone. It is the first 50/60 Hz transformer in the box (the Mean Well is a switcher), so repeat the shorted-input hum check, inputs shorted at highest sensitivity, with it fitted.
 
 - **Mounting the large boards:** bolt the EQAMP and carrier directly to the insulated plate on nylon or metal M3 standoffs. Do not consume DIN-rail area with PCB carriers. Verify the EQAMP hole pattern and maintain clearance under both boards.
 - **Mean Well supply:** the working envelope is presently based on approximately 40 × 90 mm against the plate and 100 mm projection. The exact model drawing controls the rail position, terminal bend space, ventilation and orientation; do not drill the rail until that drawing and the part are checked.

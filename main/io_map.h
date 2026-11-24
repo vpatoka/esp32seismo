@@ -19,6 +19,12 @@
  * 28. GPIO7 carries the optional LEDC clock to ADS131M02 CLKIN. CLKIN is a
  * high-impedance input and LEDC starts after boot, so the strap is not
  * disturbed. 27 (RGB LED) and 28 (BOOT) are the board's own.
+ * The carrier's P8 spares (C5 datasheet v0.5, section 3):
+ *   GPIO3 = MTDI, SDIO sampling edge only (with GPIO25). Free in every boot
+ *           mode we use; planned for the mains zero-cross input.
+ *   GPIO2 = MTMS, crystal select in Joint Download Boot only (0 = 40 MHz,
+ *           1 = 48 MHz). The DevKit runs 48 MHz, so keep it high or
+ *           high-impedance at reset, or flashing can fail.
  *
  * ADC 15 Click pull-ups (4.7k to 3.3 V): RST (SYNC/RESET), CS1 (ADC CS),
  * CS2 (LTC6903 SEN) and INT (DRDY). Every one of them idles high with the
