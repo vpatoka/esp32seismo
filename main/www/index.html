@@ -242,7 +242,8 @@ The USB console offers the same: type <code>help</code>.</p>
 var $=function(id){return document.getElementById(id);};
 var FAULTS={0:'abnormal reset',1:'I2C init',2:'task init',7:'ADC not found',8:'RTC not answering',
   9:'RTC lost power',10:'I2C bus recovered',11:'1 Hz reference lost',12:'ADC CRC errors',
-  13:'late ADC reads',14:'clipping',15:'no wall-clock time',16:'ADC reset or resynced itself'};
+  13:'late ADC reads',14:'clipping',15:'no wall-clock time',16:'ADC reset or resynced itself',
+  17:'mains input off (edge storm)'};
 var S={next:0,expect:null,fs:100,buf:[[],[]],flags:[],lastT:0,cfg:null,acq:null,status:null,dirty:true};
 var MAXSEC=120;
 
