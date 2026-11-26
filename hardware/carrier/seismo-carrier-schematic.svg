@@ -1,12 +1,12 @@
 <svg xmlns='http://www.w3.org/2000/svg' width='1960' height='1880' viewBox='0 0 1960 1880'>
 <rect x='0' y='0' width='1960' height='1880' fill='#fff'/>
 <text x='20' y='34' font-size='22' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>VSEISMO carrier board, schematic rev A (design reference, not for fabrication)</text>
-<text x='20' y='58' font-size='13' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Net-label style: same blue label = same net. Pin numbers in grey. Power comes from the EQAMP J8 (raw DC), so the power return already joins AMP_GND and GND.</text>
+<text x='20' y='58' font-size='13' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Net-label style: same blue label = same net. Pin numbers in grey. Power comes from the Mean Well's second output pair; carrier and EQAMP grounds meet at its -V.</text>
 <rect x='20' y='80' width='900' height='420' rx='0' stroke='#666' stroke-width='1.2' fill='none' stroke-dasharray='6 4'/>
-<text x='30' y='100' font-size='15' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>A. Power: raw DC from EQAMP J8, U1 makes 5 V, U2 makes a clean 3.3 V for the ADC</text>
+<text x='30' y='100' font-size='15' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>A. Power: DC from the Mean Well second pair, U1 makes 5 V, U2 makes a clean 3.3 V for the ADC</text>
 <rect x='60' y='150' width='34' height='52' rx='0' stroke='#111' stroke-width='1.6' fill='#f4f4f4'/>
 <text x='77' y='128' font-size='12' fill='#111' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>P1</text>
-<text x='77' y='142' font-size='11' fill='#666' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace'>DC IN (J8)</text>
+<text x='77' y='142' font-size='11' fill='#666' text-anchor='middle' font-family='DejaVu Sans Mono, Consolas, monospace'>DC IN (PSU)</text>
 <circle cx='77' cy='163.0' r='7' stroke='#111' stroke-width='1.4' fill='none'/>
 <line x1='72' y1='168.0' x2='82' y2='158.0' stroke='#111' stroke-width='1'/>
 <text x='77' y='167.0' font-size='10' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'></text>
@@ -178,12 +178,12 @@
 <line x1='638' y1='476' x2='642' y2='476' stroke='#111' stroke-width='2'/>
 <rect x='720' y='411' width='50' height='18' rx='3' stroke='#0645ad' stroke-width='1.6' fill='none'/>
 <text x='725' y='424' font-size='12' fill='#0645ad' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>+3V3A</text>
-<text x='560' y='130' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>One adapter (18-24 V DC) feeds the EQAMP. P1 takes</text>
-<text x='560' y='144' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>its J8 raw DC (after its bridge, before its</text>
-<text x='560' y='158' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>regulators): about 15-27 V. Never its J9 +-12 V.</text>
-<text x='560' y='180' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>D1 P6KE33A (28.2 V standoff) stays off across the</text>
-<text x='560' y='194' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>whole J8 range. D3 is redundant behind the amp</text>
-<text x='560' y='208' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>bridge but harmless.</text>
+<text x='560' y='130' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>One Mean Well (21.4-24 V DC). Its paralleled</text>
+<text x='560' y='144' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>terminals: one pair to EQAMP J7, one to P1.</text>
+<text x='560' y='158' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>Not the EQAMP J8, never its J9 +-12 V.</text>
+<text x='560' y='180' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>D1 P6KE33A (28.2 V standoff) stays off up to</text>
+<text x='560' y='194' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>a 24 V trim. D3 is the only reverse-polarity</text>
+<text x='560' y='208' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>block on this path.</text>
 <text x='40' y='492' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>D2: the DevKit never fights its own USB 5 V.  +3V3A feeds only the Click (AVDD = DVDD there) and Y1.</text>
 <rect x='940' y='80' width='1000' height='620' rx='0' stroke='#666' stroke-width='1.2' fill='none' stroke-dasharray='6 4'/>
 <text x='950' y='100' font-size='15' fill='#111' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace' font-weight='bold'>B. ESP32-C5-DevKitC-1 v1.2 (DK1) on two 1x16 female headers</text>
@@ -628,7 +628,7 @@
 <line x1='234' y1='1551.0' x2='246' y2='1551.0' stroke='#111' stroke-width='2'/>
 <line x1='238' y1='1555.0' x2='242' y2='1555.0' stroke='#111' stroke-width='2'/>
 <text x='40' y='1580' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>AMP_GND_Z and AMP_GND_H are separate nets: each channel's ground return runs only from its input</text>
-<text x='40' y='1594' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>terminal to its AINx-. They meet at the EQAMP. R30, R34 DNP: the J8 power return already joins amplifier</text>
+<text x='40' y='1594' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>terminal to its AINx-. They meet at the EQAMP. R30, R34 DNP: the supply -V already joins amplifier</text>
 <text x='40' y='1608' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>and carrier grounds; fit 10R only if hum shows up. Ratio 0.099: +-10 V -&gt; +-0.99 V. No clamp diodes:</text>
 <text x='40' y='1622' font-size='11' fill='#666' text-anchor='start' font-family='DejaVu Sans Mono, Consolas, monospace'>a clamp to GND would clip the negative half. TB2 is AIN1-, AIN1+ on the Click (MikroE schematic v100).</text>
 <rect x='940' y='720' width='1000' height='360' rx='0' stroke='#666' stroke-width='1.2' fill='none' stroke-dasharray='6 4'/>

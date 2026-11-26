@@ -6,7 +6,7 @@ The carrier for [esp32seismo](../../README.md). Three modules plug into female h
 - the MikroE ADC 15 Click
 - a ZS-042 DS3231 module
 
-Everything else is on the carrier: the DC to 5 V converter fed from the EQAMP's J8, a separate quiet 3.3 V for the ADC, one analog front-end block per amplifier channel, the 8.192 MHz ADC clock, and the GPS PPS input.
+Everything else is on the carrier: the DC to 5 V converter fed from the Mean Well's second output pair, a separate quiet 3.3 V for the ADC, one analog front-end block per amplifier channel, the 8.192 MHz ADC clock, and the GPS PPS input.
 
 It follows the esp32nixie carrier board pattern: one generator script, hand-placed drawings, and a KiCad netlist for layout. The analog reasoning is in [main README, Hardware](../../README.md#hardware). The firmware pin map it matches is in [main README, Firmware Architecture](../../README.md#firmware-architecture).
 
@@ -39,8 +39,8 @@ Connections live in the `PARTS` list at the bottom of the script, and the drawin
 ```mermaid
 flowchart LR
     AC[AC mains] --> PSU[DIN Mean Well<br/>18-24 V DC]
-    PSU -->|J7| EQ[Webtronics EQAMP]
-    EQ -->|J8 raw DC| CB[Carrier<br/>U1 5 V, U2 3.3 V analog]
+    PSU -->|pair 1 to J7| EQ[Webtronics EQAMP]
+    PSU -->|pair 2 to P1| CB[Carrier<br/>U1 5 V, U2 3.3 V analog]
     GZ[Lipe 4.5 Hz Z] -->|2-pin in| EQ
     GH[LGT-4.5H H] -->|2-pin in| EQ
     EQ -->|CH1 out, 2-pin| P2[P2]
@@ -55,8 +55,8 @@ flowchart LR
 ```
 
 - **One block per channel.** Each EQAMP channel has a 2-pin input from its geophone (into the LT1007) and a 2-pin output (signal and ground). The carrier keeps each output pair intact all the way to the ADC: the signal goes through the divider to AINx+, and that channel's own ground return goes to AINx−. That's a pseudo-differential input per channel.
-- **One internal supply.** A DIN-rail Mean Well AC/DC supply in the enclosure provides 18 to 24 VDC (normally 24 VDC) to EQAMP J7. The carrier takes the EQAMP's J8, the raw DC after its bridge rectifier and before its LM7812 / LM2574 regulators (about 15 to 27 V). Never J9: that's the amplifier's own regulated ±12 V analog supply. The exact supply model and its datasheet clearances remain to be verified.
-- **Ground.** The J8 power return joins the EQAMP and carrier grounds. Each channel's ground return is its own net, `AMP_GND_Z` (P2-2 to P4-2) and `AMP_GND_H` (P3-2 to P5-1), and goes only to that channel's AINx−, so the few mV across the power return cancel in the ADC. The two meet at the EQAMP, not on the carrier. The optional links R30 and R34 are DNP by default.
+- **One internal supply, two pairs.** A DIN-rail Mean Well AC/DC supply in the enclosure provides 18 to 24 VDC (normally 24 VDC); ours trims down only to 21.384 V. It has two + and two − output terminals, paralleled inside the supply. One pair feeds EQAMP J7, the other feeds carrier P1 directly. So the carrier's WiFi current steps never pass through the EQAMP's input diode, C90 or its ground copper, and the supply's output node is the star point. The EQAMP J8 is not used. Never J9 or the LM7812 output: that's the amplifier's own regulated ±12 V analog supply. The exact supply model and its datasheet clearances remain to be verified.
+- **Ground.** The EQAMP and carrier grounds meet at the Mean Well's −V terminals, through their own return wires. Each channel's ground return is its own net, `AMP_GND_Z` (P2-2 to P4-2) and `AMP_GND_H` (P3-2 to P5-1), and goes only to that channel's AINx−, so the few mV across the power return cancel in the ADC. The two meet at the EQAMP, not on the carrier. The optional links R30 and R34 are DNP by default.
 - **Two 3.3 V rails, on purpose:**
   - `+3V3` is the DevKit's own LDO. That regulator also feeds the ESP32 radio, so the rail carries WiFi transmit bursts. On the carrier it only feeds the DS3231, the pull-ups and the spare terminal.
   - `+3V3A` is a dedicated quiet rail: 5 V through FB1 into U2. It feeds only the Click and Y1. The Click ties the ADC's AVDD and DVDD to its mikroBUS 3.3V pin, so whatever sits on that pin reaches the analog front end.
@@ -77,7 +77,7 @@ Screw terminals are Phoenix MKDS 1,5 at 5.08 mm. Module sockets and jumper heade
 
 | Ref | Pins | Function |
 |---|---|---|
-| P1 | 1 +VIN, 2 GND | Raw DC from the EQAMP J8 (pin 1 +, pin 2 GND), about 15 to 27 V |
+| P1 | 1 +VIN, 2 GND | Mean Well second output pair (pin 1 +V, pin 2 −V), 21.4 to 24 V |
 | P2 | 1 SIG, 2 GND | EQAMP channel 1 output, vertical (Z), ±10 V |
 | P3 | 1 SIG, 2 GND | EQAMP channel 2 output, horizontal (H), ±10 V |
 | P4 | 1 AIN0+, 2 AIN0− | To the Click TB1, same order as TB1 |
@@ -240,7 +240,7 @@ PCB: JLCPCB or PCBWay, 2 layers, 130 × 90 mm, 1.6 mm, 1 oz, HASL.
   - The error is nearly the same on both channels, because the dividers match. Measure it once with the "Positive test level" and a known amplifier signal, and trim it with `chN_gcal`.
 
   The 47 nF also serves as the charge reservoir for each input sample. Keep C10 and C11 at the point where the pigtails leave the board, and keep P4 and P5 short.
-- **Ground link.** With power from J8, the power return already joins the amplifier grounds and `GND`, so R30 (`AMP_GND_Z`) and R34 (`AMP_GND_H`) stay DNP. A second hard link would close a loop through the power cable. Fit 10 Ω in both only if hum shows up. Each channel's ground return is its own net, so the router keeps it as its own trace, P2-2 to P4-2 and P3-2 to P5-1, never through the pour and never joined on the carrier. Run the J8 cable bundled with the P2/P3 cables to keep the loop area small.
+- **Ground link.** The supply's −V already joins the amplifier grounds and `GND`, so R30 (`AMP_GND_Z`) and R34 (`AMP_GND_H`) stay DNP. A second hard link would close a loop through the power cable. Fit 10 Ω in both only if hum shows up. Each channel's ground return is its own net, so the router keeps it as its own trace, P2-2 to P4-2 and P3-2 to P5-1, never through the pour and never joined on the carrier. Run the P1 supply pair bundled with the P2/P3 cables to keep the loop area small.
 - **+3V3A.** FB1, C4, U2 (LP2950, 100 mA, needs at least 1 µF on its output), C5 and C6.
   - Load is under 30 mA: the ADC, the LTC6903, the Click LED and Y1.
   - Both 3.3 V rails come from the same 5 V, so they rise together, and the Click's 4.7k pull-ups can't back-feed a DevKit that's off.
@@ -261,10 +261,11 @@ PCB: JLCPCB or PCBWay, 2 layers, 130 × 90 mm, 1.6 mm, 1 oz, HASL.
   - In `ext` and `ledc` the LTC6903 output sits on the pin next to CLKIN. The firmware powers it down (CNF = 11, `ltc6903_power_down()` in `main/ads131m0x.c`) whenever `clk_src` isn't `ltc6903`. Route a GND trace between J5-5 and J5-6 out to JP1.
 - **1 Hz reference.** JP2 picks the DS3231 SQW or the GPS PPS. R44 is the pull-up the open-drain SQW needs. R42 protects GPIO23 from a 5 V PPS, and R43 (DNP) turns it into a 1k/2.2k divider if the GPS drives a 5 V PPS.
 - **ZS-042.** It has 4.7k pull-ups on SCL, SDA and SQW, so R40/R41 stay DNP. Its charge circuit (200 Ω and a diode from VCC) is meant for an LIR2032. With a plain CR2032, remove the diode.
-- **Power, from the EQAMP J8.** P1 takes the amplifier's raw DC, about 15 to 27 V. The carrier load sits ahead of the amplifier's LM7812 and LM2574, which regulate out the WiFi load steps.
-  - D1 is a P6KE33A: 28.2 V standoff, above the 26.6 V J8 can reach, so it stays off across the whole input range. The P6KE30A (25.6 V) sat under that, and the old P6KE18A would conduct above about 17 V. At full surge current any of these clamps in the 40s of volts, above U1's 36 V rating; the PTC and the amplifier's bridge make that surge unlikely, but D1 alone doesn't guarantee U1 survives one.
-  - C1 is rated 50 V, since J8 can reach about 26.6 V.
-  - U1 takes 7 to 36 V. F1 is rated well above 30 V. D3 (40 V) is redundant behind the amplifier's bridge but harmless.
+- **Power, from the Mean Well's second pair.** P1 sees the supply voltage directly, 21.4 to 24 V, with no diode drop in front. The carrier load is on its own pair, so the amplifier's LM7812 and LM2574 (and the C90 they share) don't see the WiFi load steps at all.
+  - Not from the LM7812 output: its WiFi steps and the buck's input ripple would land on the LT1007 rail, it would add about 0.9 W average to U30, and the carrier would draw about 2.1 W from the supply instead of about 1.24 W.
+  - D1 is a P6KE33A: 28.2 V standoff, above the 24 V maximum trim, so it stays off across the working range. There's no diode cushion in front of P1, so keep the Mean Well at 24 V or below (21.4 V is best, it also keeps U30 cool). An HDR-style 24 V unit trims up to about 29 V, above D1's standoff and the EQAMP's 28 V limit: measure the trim's top end once and note it. At full surge current any of these clamps in the 40s of volts, above U1's 36 V rating; the PTC and the supply's own output protection make that surge unlikely, but D1 alone doesn't guarantee U1 survives one.
+  - C1 is rated 50 V, twice the 24 V trim.
+  - U1 takes 7 to 36 V. F1 is rated well above 30 V. D3 (40 V) is the only reverse-polarity block on this path: P1 has no EQAMP diode in front of it.
   - D1 sits after F1, so a sustained overvoltage trips the PTC.
   - Adapter budget: the EQAMP's 150 mA, plus the carrier's about 0.11 A peak at 24 V (0.17 A at 16 V), so 0.5 A or more.
   - 5 V budget: about 180 mA average and 450 mA peak for the DevKit, plus about 30 mA for a GPS module, against U1's 1.5 A.
@@ -341,13 +342,13 @@ Layout on the 470 × 370 mm plate, coordinates from its upper-left corner:
 - **DS3232 board:** this is separate from the carrier's documented ZS-042 socket. Confirm its dimensions, hole pattern, I2C connector and SQW level before fixing its position or changing the carrier interface.
 - **RF clearance:** keep the ESP32 antenna end away from the steel rail, Mean Well supply and wiring. Nothing crosses the antenna keep-out.
 - **Segregation:** put geophone terminals and wiring at the far left and mains equipment at the far right. Do not share wire duct or gland space between mains and sensor wiring. Use finger-safe mains terminals, strain relief, an appropriately rated fuse/disconnect, protective-earth treatment required by the supply and local code, and barriers where required.
-- **Low-voltage wiring:** bundle EQAMP J8 to carrier P1 with the two EQAMP output pairs to P2/P3, keep it short, and do not run it through the mains zone.
+- **Low-voltage wiring:** run the Mean Well's second pair (22 AWG is plenty, peak about 0.17 A) to carrier P1, bundled with the two EQAMP output pairs to P2/P3, keep it short, and do not run it through the mains zone.
 - **Entries:** use bottom entries for the single shielded field cable described in the main README's site-install documentation, AC mains, and the GNSS coax/bulkhead, plus a hydrophobic membrane vent. Keep the GNSS surge arrester at the building entry and bond it with a short, straight grounding lead.
 
 ## Bring-up order
 
 1. **Bare board, no modules.** U1, U2 and Y1 fitted. Apply 24 V from a bench supply on P1, then check:
-   - TP1 = 24 V (about 1.4 V less from the real J8), TP2 = 5 V, TP4 = 3.3 V, LED1 on, nothing warm.
+   - TP1 = 24 V (the Mean Well's trim when it's wired, no diode drop in front of P1), TP2 = 5 V, TP4 = 3.3 V, LED1 on, nothing warm.
    - Reverse the plug once: nothing should happen.
 2. **JP1 on 1-2.** Scope TP6 for 8.192 MHz with a clean edge.
 3. **DevKit in, USB only, carrier unpowered.**
@@ -361,7 +362,7 @@ Layout on the 470 × 370 mm plate, coordinates from its upper-left corner:
    - JP1 on 5-6, `clk_src=ltc6903`: the ADC must come up exactly as before. That proves both bodge wires.
    - JP1 on 1-2, `clk_src=ext`: scope TP6 for 8.192 MHz, check the rate reads 1000 SPS, and check J5-5 (SCL) is flat.
 7. **P4 and P5 pigtails to the Click TB1 and TB2.** Short P2 and P3 (SIG to GND) and read the noise floor on the web page. It should match the "Shorted" mux reading.
-8. **EQAMP J8 to P1, channel outputs on P2 and P3.** Check that the EQAMP's ±12 V stays steady with WiFi busy, and check for hum. If hum shows up, fit R30 and R34 at 10 Ω.
+8. **Mean Well second pair to P1, channel outputs on P2 and P3.** First, mains off: continuity +V to +V and −V to −V on the supply (paralleled terminals, not a dual output), then with the carrier unplugged check polarity and voltage at the P1 wire ends. Check that the EQAMP's ±12 V stays steady with WiFi busy, and check for hum. If hum shows up, fit R30 and R34 at 10 Ω.
 
 ## Footprints
 
@@ -380,7 +381,7 @@ Generated. KiCad footprint per part.
 | C11 | 47nF C0G | `Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm` | C0G/NP0 only |
 | C12 | 100nF | `Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm` | at Y1 pin 4, datasheet asks >= 10 nF |
 | C13 | 100nF | `Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm` | at J2 VCC |
-| D1 | P6KE33A | `Diode_THT:D_DO-15_P10.16mm_Horizontal` | TVS, unidirectional, 28.2 V standoff (J8 reaches about 26.6 V), cathode to +VIN |
+| D1 | P6KE33A | `Diode_THT:D_DO-15_P10.16mm_Horizontal` | TVS, unidirectional, 28.2 V standoff (keep the supply trim at 24 V or below), cathode to +VIN |
 | D2 | 1N5817 | `Diode_THT:D_DO-41_SOD81_P10.16mm_Horizontal` |  |
 | D3 | 1N5819 | `Diode_THT:D_DO-41_SOD81_P10.16mm_Horizontal` | reverse-polarity block |
 | F1 | RXEF050 | `Capacitor_THT:C_Disc_D7.5mm_W5.0mm_P5.00mm` | footprint is a stand-in, check the RXEF050 drawing |
@@ -393,7 +394,7 @@ Generated. KiCad footprint per part.
 | JP1 | CLK SEL | `Connector_PinHeader_2.54mm:PinHeader_2x03_P2.54mm_Vertical` | one shunt: 1-2 = Y1, 3-4 = GPIO7 LEDC, 5-6 = Click LTC6903 (via J5-5) |
 | JP2 | REF SEL | `Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical` | 1-2 = DS3231 SQW, 2-3 = GPS PPS |
 | LED1 | green | `LED_THT:LED_D3.0mm` |  |
-| P1 | DC IN EQAMP J8 | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal` |  |
+| P1 | DC IN MEAN WELL | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal` |  |
 | P2 | CH1 Z IN | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal` |  |
 | P3 | CH2 H IN | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal` |  |
 | P4 | TO CLICK TB1 | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal` |  |
@@ -412,11 +413,11 @@ Generated. KiCad footprint per part.
 | R21 | 1.0k 0.1% | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 0.1 %, 25 ppm metal film |
 | R22 | 9.1k 0.1% | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 0.1 %, 25 ppm metal film |
 | R23 | 1.0k 0.1% | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | 0.1 %, 25 ppm metal film |
-| R30 | 10R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | DNP by default: the J8 power return joins the grounds; fit only if hum |
+| R30 | 10R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | DNP by default: the supply -V joins the grounds; fit only if hum |
 | R31 | 10k | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
 | R32 | 33R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |
 | R33 | 33R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | at Y1 pin 3 |
-| R34 | 10R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | DNP by default: the J8 power return joins the grounds; fit only if hum |
+| R34 | 10R | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | DNP by default: the supply -V joins the grounds; fit only if hum |
 | R40 | 4.7k | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | DNP: ZS-042 has its own |
 | R41 | 4.7k | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | DNP: ZS-042 has its own |
 | R42 | 1k | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` |  |

@@ -148,10 +148,10 @@ The stock Click wires its screw terminals straight to the ADC pins and clocks th
 
 The [carrier board](hardware/carrier/README.md) holds the DevKit, the ADC 15 Click and a ZS-042 DS3231 on headers, plus the power, the analog front end and the ADC clock.
 
-- **One adapter, 18 to 24 V DC, 0.5 A or more,** feeds the EQAMP. The carrier takes the EQAMP's J8: raw DC after its bridge rectifier and before its regulators, about 15 to 27 V. It goes through a fuse, a reverse diode and a TVS.
-- **Never the EQAMP's J9.** That's the amplifier's own regulated ±12 V analog supply, and WiFi transmit bursts would land in its gain-1700 chain.
+- **One DIN-rail Mean Well, 21.4 to 24 V DC, 0.5 A or more.** Its two paralleled output pairs feed the EQAMP (J7) and the carrier (P1) separately, so the carrier's WiFi current steps stay off the amplifier's input diode and reservoir capacitor. On the carrier it goes through a fuse, a reverse diode and a TVS. Keep the trim at 24 V or below.
+- **Not the EQAMP's J8, never its J9.** J9 is the amplifier's own regulated ±12 V analog supply, and WiFi transmit bursts would land in its gain-1700 chain.
 - A Murata switching module makes 5 V for the DevKit. A separate ferrite and LDO make a quiet 3.3 V just for the Click.
-- Each EQAMP channel arrives as a signal and ground pair, and stays a pair down to its ADC input (pseudo-differential). That cancels the few mV across the J8 power return, so the extra ground link R30 stays unfitted unless hum shows up.
+- Each EQAMP channel arrives as a signal and ground pair, and stays a pair down to its ADC input (pseudo-differential). That cancels the few mV across the power return wires, so the extra ground link R30 stays unfitted unless hum shows up.
 
 ## Timing
 

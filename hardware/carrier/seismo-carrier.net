@@ -1,7 +1,7 @@
 (export (version "E")
   (design
     (source "gen_seismo_carrier.py")
-    (date "2026-11-17")
+    (date "2026-11-26")
     (tool "gen_seismo_carrier.py")
     (sheet (number "1") (name "/") (tstamps "/")
       (title_block (title "VSEISMO carrier board") (company "") (rev "A") (date "") (source "gen_seismo_carrier.py"))))
@@ -151,7 +151,7 @@
       (sheetpath (names "/") (tstamps "/"))
       (tstamps "2866c284-0d34-55a7-80c0-8a0339c5d2a5"))
     (comp (ref "P1")
-      (value "DC IN EQAMP J8")
+      (value "DC IN MEAN WELL")
       (footprint "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal")
       (libsource (lib "Connector") (part "Screw_Terminal_01x02") (description ""))
       (sheetpath (names "/") (tstamps "/"))

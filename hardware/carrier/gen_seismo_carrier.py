@@ -219,11 +219,11 @@ def panel(s, x, y, w, h, title):
 # ══ SCHEMATIC ═════════════════════════════════════════════════════════════
 S = Svg(1960, 1880, "VSEISMO carrier board, schematic rev A (design reference, not for fabrication)")
 S.text(20, 58, "Net-label style: same blue label = same net. Pin numbers in grey. "
-       "Power comes from the EQAMP J8 (raw DC), so the power return already joins AMP_GND and GND.", 13, c=GRY)
+       "Power comes from the Mean Well's second output pair; carrier and EQAMP grounds meet at its -V.", 13, c=GRY)
 
 # ── A: power ──────────────────────────────────────────────────────────────
-panel(S, 20, 80, 900, 420, "A. Power: raw DC from EQAMP J8, U1 makes 5 V, U2 makes a clean 3.3 V for the ADC")
-p = terminal(S, 60, 150, "P1", "DC IN (J8)", ["+VIN", "GND"])
+panel(S, 20, 80, 900, 420, "A. Power: DC from the Mean Well second pair, U1 makes 5 V, U2 makes a clean 3.3 V for the ADC")
+p = terminal(S, 60, 150, "P1", "DC IN (PSU)", ["+VIN", "GND"])
 y12 = p[0][1]
 S.line(*p[1], 100, p[1][1]); gnd(S, 100, p[1][1])
 S.line(*p[0], 130, y12, c=PWR)
@@ -270,12 +270,12 @@ S.line(540, ya, 720, ya, c=PWR)
 S.dot(580, ya); cap_v(S, 580, ya, "C5", "10uF", polar=True, length=40); gnd(S, 580, ya + 40)
 S.dot(640, ya); cap_v(S, 640, ya, "C6", "100nF", length=40); gnd(S, 640, ya + 40)
 netlab(S, 720, ya, "+3V3A")
-S.text(560, 130, "One adapter (18-24 V DC) feeds the EQAMP. P1 takes", 11, c=GRY)
-S.text(560, 144, "its J8 raw DC (after its bridge, before its", 11, c=GRY)
-S.text(560, 158, "regulators): about 15-27 V. Never its J9 +-12 V.", 11, c=GRY)
-S.text(560, 180, "D1 P6KE33A (28.2 V standoff) stays off across the", 11, c=GRY)
-S.text(560, 194, "whole J8 range. D3 is redundant behind the amp", 11, c=GRY)
-S.text(560, 208, "bridge but harmless.", 11, c=GRY)
+S.text(560, 130, "One Mean Well (21.4-24 V DC). Its paralleled", 11, c=GRY)
+S.text(560, 144, "terminals: one pair to EQAMP J7, one to P1.", 11, c=GRY)
+S.text(560, 158, "Not the EQAMP J8, never its J9 +-12 V.", 11, c=GRY)
+S.text(560, 180, "D1 P6KE33A (28.2 V standoff) stays off up to", 11, c=GRY)
+S.text(560, 194, "a 24 V trim. D3 is the only reverse-polarity", 11, c=GRY)
+S.text(560, 208, "block on this path.", 11, c=GRY)
 S.text(40, 492, "D2: the DevKit never fights its own USB 5 V.  +3V3A feeds only the Click (AVDD = DVDD there) and Y1.", 11, c=GRY)
 
 # ── B: DevKit ─────────────────────────────────────────────────────────────
@@ -371,7 +371,7 @@ for i, (pin_ref, title, rs, rp, cc, node, out_ref, out_title, out_pins, sig_at, 
     netlab(S, 500, rail, agnd)
     S.dot(240, rail); res_v(S, 240, rail, rlink, "10R", length=34, dnp=True); gnd(S, 240, rail + 34)
 S.text(40, 1580, "AMP_GND_Z and AMP_GND_H are separate nets: each channel's ground return runs only from its input", 11, c=GRY)
-S.text(40, 1594, "terminal to its AINx-. They meet at the EQAMP. R30, R34 DNP: the J8 power return already joins amplifier", 11, c=GRY)
+S.text(40, 1594, "terminal to its AINx-. They meet at the EQAMP. R30, R34 DNP: the supply -V already joins amplifier", 11, c=GRY)
 S.text(40, 1608, "and carrier grounds; fit 10R only if hum shows up. Ratio 0.099: +-10 V -> +-0.99 V. No clamp diodes:", 11, c=GRY)
 S.text(40, 1622, "a clamp to GND would clip the negative half. TB2 is AIN1-, AIN1+ on the Click (MikroE schematic v100).", 11, c=GRY)
 
@@ -582,7 +582,7 @@ box(113, 24, 6, 7, "R42-44", "", size=8)
 term(120, 20, 3, "P7", "GPS", lab_side="l")
 term(120, 40, 4, "P8", "SPARE", lab_side="l")
 # ── power zone
-term(2, 66, 2, "P1", "DC IN J8")
+term(2, 66, 2, "P1", "DC IN PSU")
 box(18, 65.5, 8, 3.5, "F1", "", size=9)
 box(18, 70, 9, 3, "D3", "", size=9)
 box(18, 74.5, 9, 4.5, "D1", "TVS", size=9)
@@ -678,12 +678,12 @@ def tb(ref, value, nets):
 
 
 # A: power
-tb("P1", "DC IN EQAMP J8", ["+VIN_RAW", "GND"])
+tb("P1", "DC IN MEAN WELL", ["+VIN_RAW", "GND"])
 part("F1", "RXEF050", FP_PTC, ("Device", "Polyfuse"), {1: "+VIN_RAW", 2: "+VIN_F"},
      "footprint is a stand-in, check the RXEF050 drawing")
 part("D3", "1N5819", FP_D, ("Device", "D_Schottky"), {1: "+VIN", 2: "+VIN_F"}, "reverse-polarity block")
 part("D1", "P6KE33A", "Diode_THT:D_DO-15_P10.16mm_Horizontal", ("Device", "D_TVS"),
-     {1: "+VIN", 2: "GND"}, "TVS, unidirectional, 28.2 V standoff (J8 reaches about 26.6 V), cathode to +VIN")
+     {1: "+VIN", 2: "GND"}, "TVS, unidirectional, 28.2 V standoff (keep the supply trim at 24 V or below), cathode to +VIN")
 part("C1", "22uF 50V", FP_CP, ("Device", "C_Polarized"), {1: "+VIN", 2: "GND"})
 part("U1", "OKI-78SR-5/1.5-W36-C", "Converter_DCDC:Converter_DCDC_Murata_OKI-78SR_Vertical",
      ("Regulator_Switching", "OKI-78SR-5_1.5-W36-C"), {1: "+VIN", 2: "GND", 3: "+5V"},
@@ -737,8 +737,8 @@ res("R23", "1.0k 0.1%", "AIN1P", "AMP_GND_H", "0.1 %, 25 ppm metal film")
 cap("C11", "47nF C0G", "AIN1P", "AMP_GND_H", "C0G/NP0 only")
 tb("P4", "TO CLICK TB1", ["AIN0P", "AMP_GND_Z"])        # Click TB1: 1 AIN0+, 2 AIN0-
 tb("P5", "TO CLICK TB2", ["AMP_GND_H", "AIN1P"])        # Click TB2: 1 AIN1-, 2 AIN1+
-res("R30", "10R", "AMP_GND_Z", "GND", "DNP by default: the J8 power return joins the grounds; fit only if hum")
-res("R34", "10R", "AMP_GND_H", "GND", "DNP by default: the J8 power return joins the grounds; fit only if hum")
+res("R30", "10R", "AMP_GND_Z", "GND", "DNP by default: the supply -V joins the grounds; fit only if hum")
+res("R34", "10R", "AMP_GND_H", "GND", "DNP by default: the supply -V joins the grounds; fit only if hum")
 
 # E: ADC clock
 part("Y1", "CB3LV-3I-8M192000", "seismo:Oscillator_CTS_CB3LV_7.0x5.0mm", ("Oscillator", "ASE-xxxMHz"),
