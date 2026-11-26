@@ -345,6 +345,18 @@ Layout on the 470 × 370 mm plate, coordinates from its upper-left corner:
 - **Low-voltage wiring:** run the Mean Well's second pair (22 AWG is plenty, peak about 0.17 A) to carrier P1, bundled with the two EQAMP output pairs to P2/P3, keep it short, and do not run it through the mains zone.
 - **Entries:** use bottom entries for the single shielded field cable described in the main README's site-install documentation, AC mains, and the GNSS coax/bulkhead, plus a hydrophobic membrane vent. Keep the GNSS surge arrester at the building entry and bond it with a short, straight grounding lead.
 
+### Mean Well power wiring checks
+
+Carrier P1 gets its own pair from the Mean Well's second +V/−V terminals. Not the EQAMP J8, never J9 or the LM7812 output. Do these in order, before the first connection:
+
+1. Mains off: continuity +V to +V and −V to −V on the supply. Both pairs must be paralleled inside; if not, it's a dual-output unit and this wiring doesn't apply.
+2. Measure the trim's range once (the minimum is 21.384 V) and note the top end. An HDR-style 24 V unit reaches about 29 V, above D1's 28.2 V standoff and the EQAMP's 28 V limit.
+3. Set the trim to 21.4 V (24 V at most): there's no diode cushion in front of P1, and the low end keeps U30 coolest.
+4. Pair 1 to EQAMP J7: J7 − to EQAMP GND reads 0 V (diode in the + leg), C90 about 20.5 V. About 0.7 V means the diode is in the return leg: sort that out before the carrier goes on.
+5. Pair 2 for P1: 22 AWG is plenty (peak about 0.17 A), + to P1-1, − to P1-2, bundled with the P2/P3 signal pairs, never through the mains zone.
+6. Carrier unplugged: check polarity and voltage at the P1 wire ends.
+7. Keep the Mean Well output floating (V− not tied to PE); R30/R34 stay DNP unless hum shows up.
+
 ## Bring-up order
 
 1. **Bare board, no modules.** U1, U2 and Y1 fitted. Apply 24 V from a bench supply on P1, then check:

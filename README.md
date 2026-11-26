@@ -150,6 +150,7 @@ The [carrier board](hardware/carrier/README.md) holds the DevKit, the ADC 15 Cli
 
 - **One DIN-rail Mean Well, 21.4 to 24 V DC, 0.5 A or more.** Its two paralleled output pairs feed the EQAMP (J7) and the carrier (P1) separately, so the carrier's WiFi current steps stay off the amplifier's input diode and reservoir capacitor. On the carrier it goes through a fuse, a reverse diode and a TVS. Keep the trim at 24 V or below.
 - **Not the EQAMP's J8, never its J9.** J9 is the amplifier's own regulated ±12 V analog supply, and WiFi transmit bursts would land in its gain-1700 chain.
+- Check the supply terminals, trim and polarity before wiring: see [Mean Well power wiring checks](hardware/carrier/README.md#mean-well-power-wiring-checks).
 - A Murata switching module makes 5 V for the DevKit. A separate ferrite and LDO make a quiet 3.3 V just for the Click.
 - Each EQAMP channel arrives as a signal and ground pair, and stays a pair down to its ADC input (pseudo-differential). That cancels the few mV across the power return wires, so the extra ground link R30 stays unfitted unless hum shows up.
 
