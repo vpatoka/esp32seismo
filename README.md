@@ -141,7 +141,7 @@ The stock Click wires its screw terminals straight to the ADC pins and clocks th
    | 3-4 | GPIO7 LEDC, 8.000 MHz | `ledc` |
    | 5-6 | The Click's own LTC6903, back through SCL | `ltc6903` |
 
-   Going back to the stock clock is a shunt move, not a resolder. Always fit one shunt: with none, CLKIN floats and the ADC stops. On an unmodified Click JP1 does nothing and only `ltc6903` works. Use SCL and SDA, not AN (next to RST) and never the 5V pin. After the mod the Click carries clocks on SCL and SDA, so keep it off any other host's I2C bus.
+   Going back to the stock clock is a shunt move, not a resolder. Always fit one shunt: with none, CLKIN floats and the ADC stops. On an unmodified Click JP1 does nothing and only `ltc6903` works. Use SCL and SDA, not AN (next to RST) and never the 5V pin. Count from GND on that row (9 GND, 10 5V, 11 SDA, 12 SCL): a wire one pin off toward GND lands CLKIN on 5V, which goes nowhere on the carrier. After the mod the Click carries clocks on SCL and SDA, so keep it off any other host's I2C bus.
 3. **Supply:** feed the Click from its own low-noise 3.3 V LDO with a ferrite, not from the DevKit 3V3 pin. The Click ties AVDD and DVDD together.
 
 ### Power
