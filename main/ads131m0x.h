@@ -103,6 +103,13 @@ esp_err_t ads_bus_init(void);
 /** @brief Hardware reset through SYNC/RESET, then read and check the ID. */
 esp_err_t ads_reset_and_probe(void);
 
+/**
+ * @brief Bring-up diagnostics after a failed probe: pin levels, raw frames
+ * with their CRC, a software RESET and a MISO float test. Sends a RESET, so
+ * call it only while the ADC is unconfigured.
+ */
+void ads_diag(void);
+
 /** @brief Short SYNC pulse: restarts the digital filters of all channels together. */
 void ads_sync_pulse(void);
 

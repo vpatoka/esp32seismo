@@ -15,6 +15,7 @@
 #include "io_map.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 #include "esp_log.h"
 #include "esp_rom_sys.h"
@@ -113,11 +114,12 @@ esp_err_t ads_bus_init(void)
     err = spi_bus_add_device(ADC_SPI_HOST, &ltc, &s_ltc);
     if (err != ESP_OK) return err;
 
-    /* SYNC/RESET: drive high (run) before switching to output. */
+    /* SYNC/RESET: drive high (run) before switching to output. Input stays
+     * enabled so ads_diag() can read the pin back. */
     gpio_set_level(ADC_SYNC_GPIO, 1);
     const gpio_config_t sync = {
         .pin_bit_mask = 1ULL << ADC_SYNC_GPIO,
-        .mode = GPIO_MODE_OUTPUT,
+        .mode = GPIO_MODE_INPUT_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
@@ -150,6 +152,59 @@ esp_err_t ads_reset_and_probe(void)
     s_info.nch = n;
     ESP_LOGI(TAG, "ADS131M0%u found, ID 0x%04X", n, id);
     return ESP_OK;
+}
+
+/* Log one 6-word frame in hex. The CRC check assumes an M02 frame
+ * (status, ch0, ch1, CRC): a match means SCLK, CS and MISO are good and
+ * the chip's digital side built the frame. */
+static void diag_frame(const char *what, const uint8_t *rx)
+{
+    char s[6 * 7 + 1];
+    char *p = s;
+    for (int w = 0; w < 6; w++)
+        p += snprintf(p, sizeof(s) - (size_t)(p - s), " %02X%02X%02X", rx[3 * w], rx[3 * w + 1], rx[3 * w + 2]);
+    uint16_t got = get_word16(rx + 3 * WORD_BYTES);
+    uint16_t want = crc16_ccitt(rx, 3 * WORD_BYTES);
+    ESP_LOGW(TAG, "diag %s:%s  CRC %s (0x%04X, computed 0x%04X)", what, s, got == want ? "ok" : "bad", got, want);
+}
+
+void ads_diag(void)
+{
+    uint8_t tx[ADS_MAX_CH * 3 + 6] = { 0 }, rx[sizeof(tx)];
+    const uint8_t nch = s_info.nch;
+    s_info.nch = 4;                         /* 6-word frames, as in the probe */
+
+    ESP_LOGW(TAG, "diag: SYNC %d (must be 1), DRDY %d, MISO idle %d",
+             gpio_get_level(ADC_SYNC_GPIO), gpio_get_level(ADC_DRDY_GPIO), gpio_get_level(ADC_MISO_GPIO));
+
+    for (int i = 0; i < 3; i++) {
+        memset(rx, 0, sizeof(rx));
+        if (xfer(tx, rx) == ESP_OK) diag_frame("NULL", rx);
+    }
+
+    /* A decoded RESET answers 0xFF2x (x = channel count) in the next frame. */
+    put_word16(tx, ADS_CMD_RESET);
+    uint16_t r = 0;
+    if (xfer(tx, rx) == ESP_OK) {
+        memset(tx, 0, sizeof(tx));
+        vTaskDelay(pdMS_TO_TICKS(2));
+        if (xfer(tx, rx) == ESP_OK) r = get_word16(rx);
+    }
+    ESP_LOGW(TAG, "diag: RESET command, next response 0x%04X (0xFF22 means it was decoded)", r);
+    memset(tx, 0, sizeof(tx));
+
+    /* Open MISO follows the pull; a driven one ignores it. */
+    uint16_t up = 0, down = 0;
+    gpio_pullup_en(ADC_MISO_GPIO);
+    if (xfer(tx, rx) == ESP_OK) up = get_word16(rx);
+    gpio_pullup_dis(ADC_MISO_GPIO);
+    gpio_pulldown_en(ADC_MISO_GPIO);
+    if (xfer(tx, rx) == ESP_OK) down = get_word16(rx);
+    gpio_pulldown_dis(ADC_MISO_GPIO);
+    ESP_LOGW(TAG, "diag: MISO with pull-up 0x%04X, with pull-down 0x%04X (%s)", up, down,
+             up == down ? "equal: the chip drives MISO" : "they differ: MISO is floating");
+
+    s_info.nch = nch;
 }
 
 void ads_sync_pulse(void)

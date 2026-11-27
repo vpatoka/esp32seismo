@@ -192,9 +192,15 @@ static inline void IRAM_ATTR drdy_record(int64_t t, BaseType_t *woken)
     if (s_task) vTaskNotifyGiveFromISR(s_task, woken);
 }
 
+/* Every DRDY edge either path sees, armed or not: drdy_probe_count() reads it. */
+static volatile uint32_t s_drdy_raw;
+static volatile bool s_drdy_diag;           /* GPIO path enabled only for counting */
+
 static void IRAM_ATTR drdy_isr(void *arg)
 {
     (void)arg;
+    s_drdy_raw++;
+    if (s_drdy_diag) return;
     BaseType_t woken = pdFALSE;
     drdy_record(esp_timer_get_time(), &woken);
     portYIELD_FROM_ISR(woken);
@@ -268,6 +274,7 @@ static bool IRAM_ATTR drdy_cap_cb(mcpwm_cap_channel_handle_t ch, const mcpwm_cap
         s_cap_calib = false;
         return false;
     }
+    s_drdy_raw++;
     if (!s_drdy_armed) return false;
     BaseType_t woken = pdFALSE;
     drdy_record(cap_to_us(e->cap_value), &woken);
@@ -922,6 +929,23 @@ static void resume_stream(void)
     drdy_arm(true);
 }
 
+/* Count DRDY edges for 50 ms with nothing reading the ADC. Unread, DRDY
+ * still pulses once per conversion, so edges here mean CLKIN reaches the
+ * die. After a reset the chip runs at OSR 1024. */
+static void drdy_probe_count(uint32_t clk)
+{
+    const bool isr = s_cap_mode != ACQ_CAPTURE_MCPWM;
+    if (isr) { s_drdy_diag = true; gpio_intr_enable(ADC_DRDY_GPIO); }
+    uint32_t n0 = s_drdy_raw;
+    vTaskDelay(pdMS_TO_TICKS(50));
+    uint32_t n = s_drdy_raw - n0;
+    if (isr) { gpio_intr_disable(ADC_DRDY_GPIO); s_drdy_diag = false; }
+    ESP_LOGW(TAG, "diag: %lu DRDY edges in 50 ms (about %lu expected at %lu Hz CLKIN, OSR 1024 after reset)",
+             (unsigned long)n, (unsigned long)(clk / 2 / 1024 / 20), (unsigned long)clk);
+}
+
+static uint32_t s_diag_n;                   /* failed probes since the last settings change */
+
 static bool reconfigure(void)
 {
     drdy_arm(false);
@@ -934,6 +958,12 @@ static bool reconfigure(void)
         if (!ok) ESP_LOGE(TAG, "ADC configuration did not read back");
     }
     if (ok) fault_clear(FAULT_ADC_MISSING); else fault_raise(FAULT_ADC_MISSING);
+    if (ok) {
+        s_diag_n = 0;
+    } else if (s_diag_n++ % 12 == 0) {      /* first failure, then once a minute */
+        drdy_probe_count(clk);
+        ads_diag();
+    }
 
     int decim = s_set.decim ? s_set.decim : 1;
     fir_design(s_set.taps, decim);
@@ -1026,6 +1056,7 @@ static void acq_task(void *arg)
         if (s_pending_flag) {
             s_pending_flag = false;
             s_set = s_pending;
+            s_diag_n = 0;                  /* new settings: diagnose the first failure */
             ok = reconfigure();
         }
 
