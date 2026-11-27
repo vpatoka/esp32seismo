@@ -946,6 +946,10 @@ static void drdy_probe_count(uint32_t clk, double fs, const char *why)
 
 static uint32_t s_diag_n;                   /* failed probes since the last settings change */
 static uint32_t s_nodrdy_n;                 /* no-DRDY restarts since DRDY last ran or settings changed */
+/* DRDY stopped while streaming. The sample count froze for the gap, so
+ * positions after it don't line up with those before: when DRDY returns,
+ * a new epoch restarts the timebase rate fit and ends the sample run. */
+static bool s_drdy_lost;
 
 /* The probe passed but no DRDY edge arrived. A conversion sets the STATUS
  * DRDY bits whatever the DRDY pin does, so one raw frame tells "the chip
@@ -1048,6 +1052,7 @@ static bool reconfigure(void)
     s_n_in = 0;
     s_last_t = 0;
     s_epoch++;
+    s_drdy_lost = false;                /* the restart already starts a new epoch */
     if (ok) {                           /* a failed probe outputs nothing; keep the table for real runs */
         s_fs_tab[s_fs_n % FS_TAB_N].epoch = (uint16_t)s_epoch;
         s_fs_tab[s_fs_n % FS_TAB_N].fs = fs_in / decim;
@@ -1118,7 +1123,10 @@ static void acq_task(void *arg)
 
         if (s_drdy_cnt == s_seen) {            /* timeout or a control wakeup */
             if (now - s_last_evt >= NO_DRDY_US) {
-                if (s_st.clock_ok) note(ESP_LOG_WARN, "No DRDY for 100 ms: CLKIN missing or the ADC lost power");
+                if (s_st.clock_ok) {
+                    note(ESP_LOG_WARN, "No DRDY for 100 ms: CLKIN missing or the ADC lost power");
+                    s_drdy_lost = true;
+                }
                 s_st.clock_ok = false;
                 if (now - s_last_evt >= RETRY_US && now - s_last_try >= RETRY_US) {
                     if (s_nodrdy_n++ % 12 == 0) nodrdy_diag();   /* first time, then once a minute */
@@ -1131,7 +1139,17 @@ static void acq_task(void *arg)
         }
 
         s_last_evt = now;
-        if (!s_st.clock_ok) { s_st.clock_ok = true; s_nodrdy_n = 0; note(ESP_LOG_INFO, "DRDY running"); }
+        if (!s_st.clock_ok) {
+            s_st.clock_ok = true;
+            s_nodrdy_n = 0;
+            if (s_drdy_lost) {
+                s_drdy_lost = false;
+                bump_epoch();                  /* the sample grid moved over the gap */
+                note(ESP_LOG_INFO, "DRDY running again after a gap: new epoch, rate fit restarts");
+            } else {
+                note(ESP_LOG_INFO, "DRDY running");
+            }
+        }
 
         if (!service_drdy()) {
             ok = reconfigure();
