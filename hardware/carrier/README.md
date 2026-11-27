@@ -373,6 +373,8 @@ Carrier P1 gets its own pair from the Mean Well's second +V/−V terminals. Not 
    - Then do the Click clock mod: cut the trace, wire LTC6903 pin 6 to SCL and ADS131M02 pin 17 to SDA.
    - JP1 on 5-6, `clk_src=ltc6903`: the ADC must come up exactly as before. That proves both bodge wires.
    - JP1 on 1-2, `clk_src=ext`: scope TP6 for 8.192 MHz, check the rate reads 1000 SPS, and check J5-5 (SCL) is flat.
+   - The jumper and `clk_src` must match: JP1 on 5-6 with `clk_src=ext` leaves CLKIN dead, since `ext` powers the LTC6903 down.
+   - Probe fails with ID 0x0500: that is STATUS at its power-on value, so the chip answers but didn't execute the ID read. Read the `diag:` lines on the console (`drdy_probe_count()` in `main/acq.c`, `ads_diag()` in `main/ads131m0x.c`). 0 DRDY edges with the frame CRC ok means no CLKIN at ADS131M02 pin 17; about 199 edges with the RESET command still ignored points at MOSI. Both tell the two apart without a scope.
 7. **P4 and P5 pigtails to the Click TB1 and TB2.** Short P2 and P3 (SIG to GND) and read the noise floor on the web page. It should match the "Shorted" mux reading.
 8. **Mean Well second pair to P1, channel outputs on P2 and P3.** First, mains off: continuity +V to +V and −V to −V on the supply (paralleled terminals, not a dual output), then with the carrier unplugged check polarity and voltage at the P1 wire ends. Check that the EQAMP's ±12 V stays steady with WiFi busy, and check for hum. If hum shows up, fit R30 and R34 at 10 Ω.
 
