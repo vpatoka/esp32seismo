@@ -931,8 +931,8 @@ static void resume_stream(void)
 
 /* Count DRDY edges for 50 ms with nothing reading the ADC. Unread, DRDY
  * still pulses once per conversion, so edges here mean CLKIN reaches the
- * die. After a reset the chip runs at OSR 1024. */
-static void drdy_probe_count(uint32_t clk)
+ * die. fs is the conversion rate the chip should be running at. */
+static void drdy_probe_count(uint32_t clk, double fs, const char *why)
 {
     const bool isr = s_cap_mode != ACQ_CAPTURE_MCPWM;
     if (isr) { s_drdy_diag = true; gpio_intr_enable(ADC_DRDY_GPIO); }
@@ -940,11 +940,45 @@ static void drdy_probe_count(uint32_t clk)
     vTaskDelay(pdMS_TO_TICKS(50));
     uint32_t n = s_drdy_raw - n0;
     if (isr) { gpio_intr_disable(ADC_DRDY_GPIO); s_drdy_diag = false; }
-    ESP_LOGW(TAG, "diag: %lu DRDY edges in 50 ms (about %lu expected at %lu Hz CLKIN, OSR 1024 after reset)",
-             (unsigned long)n, (unsigned long)(clk / 2 / 1024 / 20), (unsigned long)clk);
+    ESP_LOGW(TAG, "diag: %lu DRDY edges in 50 ms (about %.0f expected at %lu Hz CLKIN, %s)",
+             (unsigned long)n, fs / 20.0, (unsigned long)clk, why);
 }
 
 static uint32_t s_diag_n;                   /* failed probes since the last settings change */
+static uint32_t s_nodrdy_n;                 /* no-DRDY restarts since DRDY last ran or settings changed */
+
+/* The probe passed but no DRDY edge arrived. A conversion sets the STATUS
+ * DRDY bits whatever the DRDY pin does, so one raw frame tells "the chip
+ * converts, the DRDY path to the GPIO is broken" from "no clock at the
+ * chip". Unread data also holds DRDY low (level format), so the GPIO level
+ * should read 0 while the chip converts. */
+static void nodrdy_diag(void)
+{
+    drdy_arm(false);
+    vTaskDelay(pdMS_TO_TICKS(10));          /* 10 conversions at 1000 SPS */
+    int lvl_before = gpio_get_level(ADC_DRDY_GPIO);
+
+    int32_t ch[ADS_MAX_CH] = { 0 };
+    esp_err_t err = ads_read_frame(ch);
+    uint16_t st = ads_info()->status;
+    const uint16_t dmask = ADS_ST_DRDY_MASK(ACQ_NCH);
+    int lvl_after = gpio_get_level(ADC_DRDY_GPIO);
+    ESP_LOGW(TAG, "diag no-DRDY: STATUS 0x%04X (DRDY bits 0x%X), CH0 %ld, CH1 %ld, CRC %s",
+             st, st & dmask, (long)ch[0], (long)ch[1], err == ESP_OK ? "ok" : esp_err_to_name(err));
+    ESP_LOGW(TAG, "diag no-DRDY: GPIO%d level %d before the read, %d after (0 expected while data is unread)",
+             ADC_DRDY_GPIO, lvl_before, lvl_after);
+
+    drdy_probe_count(s_st.clk_hz_actual, s_st.fs_in, "configured rate");
+
+    const bool converting = (st & dmask) || ch[0] || ch[1];
+    if (err != ESP_OK)
+        ESP_LOGW(TAG, "diag no-DRDY verdict: frame CRC bad, SPI read unreliable");
+    else if (converting)
+        ESP_LOGW(TAG, "diag no-DRDY verdict: chip converts, DRDY does not reach GPIO%d (Click INT, J5-2, R14, J1-6)",
+                 ADC_DRDY_GPIO);
+    else
+        ESP_LOGW(TAG, "diag no-DRDY verdict: no conversions, CLKIN not at pin 17 (JP1 shunt, source, J5-6, SDA pin)");
+}
 
 static bool reconfigure(void)
 {
@@ -961,7 +995,7 @@ static bool reconfigure(void)
     if (ok) {
         s_diag_n = 0;
     } else if (s_diag_n++ % 12 == 0) {      /* first failure, then once a minute */
-        drdy_probe_count(clk);
+        drdy_probe_count(clk, clk / 2.0 / 1024, "OSR 1024 after reset");
         ads_diag();
     }
 
@@ -1057,6 +1091,7 @@ static void acq_task(void *arg)
             s_pending_flag = false;
             s_set = s_pending;
             s_diag_n = 0;                  /* new settings: diagnose the first failure */
+            s_nodrdy_n = 0;
             ok = reconfigure();
         }
 
@@ -1075,6 +1110,7 @@ static void acq_task(void *arg)
                 if (s_st.clock_ok) note(ESP_LOG_WARN, "No DRDY for 100 ms: CLKIN missing or the ADC lost power");
                 s_st.clock_ok = false;
                 if (now - s_last_evt >= RETRY_US && now - s_last_try >= RETRY_US) {
+                    if (s_nodrdy_n++ % 12 == 0) nodrdy_diag();   /* first time, then once a minute */
                     ok = reconfigure();
                     continue;
                 }
@@ -1084,7 +1120,7 @@ static void acq_task(void *arg)
         }
 
         s_last_evt = now;
-        if (!s_st.clock_ok) { s_st.clock_ok = true; note(ESP_LOG_INFO, "DRDY running"); }
+        if (!s_st.clock_ok) { s_st.clock_ok = true; s_nodrdy_n = 0; note(ESP_LOG_INFO, "DRDY running"); }
 
         if (!service_drdy()) {
             ok = reconfigure();
