@@ -970,12 +970,23 @@ static void nodrdy_diag(void)
 
     drdy_probe_count(s_st.clk_hz_actual, s_st.fs_in, "configured rate");
 
-    const bool converting = (st & dmask) || ch[0] || ch[1];
+    /* Only the STATUS DRDY bits mean new data. Nonzero channel words with
+     * the bits clear are the last result left in the output register: the
+     * chip converted at some point, but not now. The register survives a
+     * SYNC/RESET reset (same words across an ESP reboot on the bench), so
+     * "some point" can be any time since the ADC powered up. */
+    const bool fresh = (st & dmask) != 0;
+    const bool stale = !fresh && (ch[0] || ch[1]);
     if (err != ESP_OK)
         ESP_LOGW(TAG, "diag no-DRDY verdict: frame CRC bad, SPI read unreliable");
-    else if (converting)
+    else if (fresh && lvl_before == 0)
+        ESP_LOGW(TAG, "diag no-DRDY verdict: chip converts and DRDY sits low at GPIO%d, but no edges: check the interrupt setup",
+                 ADC_DRDY_GPIO);
+    else if (fresh)
         ESP_LOGW(TAG, "diag no-DRDY verdict: chip converts, DRDY does not reach GPIO%d (Click INT, J5-2, R14, J1-6)",
                  ADC_DRDY_GPIO);
+    else if (stale)
+        ESP_LOGW(TAG, "diag no-DRDY verdict: converted earlier, not now: intermittent CLKIN at pin 17 (JP1 bus, J5-6, SDA pin, bodge, pin 17)");
     else
         ESP_LOGW(TAG, "diag no-DRDY verdict: no conversions, CLKIN not at pin 17 (JP1 shunt, source, J5-6, SDA pin)");
 }
