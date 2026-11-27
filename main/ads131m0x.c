@@ -136,9 +136,11 @@ esp_err_t ads_reset_and_probe(void)
     gpio_set_level(ADC_SYNC_GPIO, 1);
     vTaskDelay(pdMS_TO_TICKS(2));
 
-    /* Assume four channels for the very first read: a longer frame is
-     * harmless, the chip ignores extra words once CS rises. */
-    s_info.nch = 4;
+    /* The frame length is fixed per device and TI promises nothing for
+     * extra words, so probe with an M02 frame (4 words). On an M03/M04
+     * this is a short frame, which still carries commands and responses
+     * (datasheet "Short SPI Frames"). */
+    s_info.nch = 2;
     uint16_t id = 0;
     esp_err_t err = ads_rreg(ADS_REG_ID, &id);
     if (err != ESP_OK) return err;
@@ -154,44 +156,117 @@ esp_err_t ads_reset_and_probe(void)
     return ESP_OK;
 }
 
-/* Log one 6-word frame in hex. The CRC check assumes an M02 frame
- * (status, ch0, ch1, CRC): a match means SCLK, CS and MISO are good and
- * the chip's digital side built the frame. */
-static void diag_frame(const char *what, const uint8_t *rx)
+/* Hex of one frame, frame_words() words. */
+static void diag_hex(char *s, size_t n, const uint8_t *b)
 {
-    char s[6 * 7 + 1];
     char *p = s;
-    for (int w = 0; w < 6; w++)
-        p += snprintf(p, sizeof(s) - (size_t)(p - s), " %02X%02X%02X", rx[3 * w], rx[3 * w + 1], rx[3 * w + 2]);
-    uint16_t got = get_word16(rx + 3 * WORD_BYTES);
-    uint16_t want = crc16_ccitt(rx, 3 * WORD_BYTES);
-    ESP_LOGW(TAG, "diag %s:%s  CRC %s (0x%04X, computed 0x%04X)", what, s, got == want ? "ok" : "bad", got, want);
+    for (int w = 0; w < frame_words(); w++)
+        p += snprintf(p, n - (size_t)(p - s), " %02X%02X%02X", b[3 * w], b[3 * w + 1], b[3 * w + 2]);
+}
+
+/* One full-duplex frame, logged with its TX and RX words and the output
+ * CRC check. A CRC match means SCLK, CS and MISO are good and the chip's
+ * digital side built the frame. Returns the CRC result. */
+static bool diag_xfer(const char *what, const uint8_t *tx, uint8_t *rx)
+{
+    memset(rx, 0, (size_t)frame_words() * WORD_BYTES);
+    if (xfer(tx, rx) != ESP_OK) {
+        ESP_LOGW(TAG, "diag %s: SPI transfer failed", what);
+        return false;
+    }
+    char ts[ADS_MAX_CH * 7 + 15], rs[sizeof(ts)];
+    diag_hex(ts, sizeof(ts), tx);
+    diag_hex(rs, sizeof(rs), rx);
+    const int crc_at = (frame_words() - 1) * WORD_BYTES;
+    uint16_t got = get_word16(rx + crc_at);
+    uint16_t want = crc16_ccitt(rx, (size_t)crc_at);
+    ESP_LOGW(TAG, "diag %s: tx%s  rx%s  CRC %s (0x%04X, computed 0x%04X)",
+             what, ts, rs, got == want ? "ok" : "bad", got, want);
+    return got == want;
+}
+
+/* RREG of one register, raw. The value is the response word of the frame
+ * AFTER the command; the command frame's response belongs to the frame
+ * before it. */
+static uint16_t diag_rreg(const char *name, uint8_t addr, uint16_t expect, uint16_t mask)
+{
+    uint8_t tx[ADS_MAX_CH * 3 + 6] = { 0 }, rx[sizeof(tx)];
+    char what[32];
+    put_word16(tx, ADS_CMD_RREG(addr, 1));
+    snprintf(what, sizeof(what), "RREG %s cmd", name);
+    diag_xfer(what, tx, rx);
+    memset(tx, 0, sizeof(tx));
+    snprintf(what, sizeof(what), "RREG %s data", name);
+    diag_xfer(what, tx, rx);
+    uint16_t v = get_word16(rx);
+    ESP_LOGW(TAG, "diag: %s (0x%02X) = 0x%04X, reset default 0x%04X (mask 0x%04X): %s",
+             name, addr, v, expect, mask, (v & mask) == (expect & mask) ? "match" : "MISMATCH");
+    return v;
+}
+
+static void diag_status(uint16_t st)
+{
+    ESP_LOGW(TAG, "diag: STATUS 0x%04X: LOCK %u, F_RESYNC %u, REG_MAP %u, CRC_ERR %u, RESET %u, WLENGTH %u, DRDY1 %u, DRDY0 %u",
+             st, !!(st & ADS_ST_LOCK), !!(st & ADS_ST_F_RESYNC), !!(st & ADS_ST_REG_MAP), !!(st & ADS_ST_CRC_ERR),
+             !!(st & ADS_ST_RESET), (st & ADS_ST_WLENGTH_MASK) >> 8, !!(st & ADS_ST_DRDY1), !!(st & ADS_ST_DRDY0));
+}
+
+/* WREG to THRSHLD_LSB (default 0000h, only used in current-detect mode),
+ * check the ack and the read-back, then restore the default. */
+static void diag_wreg_test(void)
+{
+    const uint16_t pattern = 0x5A00;
+    const uint16_t want_ack = (uint16_t)(0x4000 | ((ADS_REG_THRSHLD_LSB & 0x3F) << 7));
+    uint8_t tx[ADS_MAX_CH * 3 + 6] = { 0 }, rx[sizeof(tx)];
+    put_word16(tx, ADS_CMD_WREG(ADS_REG_THRSHLD_LSB, 1));
+    put_word16(tx + WORD_BYTES, pattern);
+    diag_xfer("WREG THRSHLD_LSB cmd", tx, rx);
+    memset(tx, 0, sizeof(tx));
+    diag_xfer("WREG THRSHLD_LSB ack", tx, rx);
+    uint16_t ack = get_word16(rx);
+    uint16_t rb = diag_rreg("THRSHLD_LSB", ADS_REG_THRSHLD_LSB, pattern, 0xFFFF);
+    ESP_LOGW(TAG, "diag: WREG ack 0x%04X (expected 0x%04X), read-back 0x%04X (wrote 0x%04X): %s",
+             ack, want_ack, rb, pattern, ack == want_ack && rb == pattern ? "register write works" : "register write FAILED");
+    ads_wreg(ADS_REG_THRSHLD_LSB, 0x0000);
 }
 
 void ads_diag(void)
 {
     uint8_t tx[ADS_MAX_CH * 3 + 6] = { 0 }, rx[sizeof(tx)];
     const uint8_t nch = s_info.nch;
-    s_info.nch = 4;                         /* 6-word frames, as in the probe */
+    s_info.nch = 2;                         /* M02 frames: 4 words, the fixed frame length */
 
     ESP_LOGW(TAG, "diag: SYNC %d (must be 1), DRDY %d, MISO idle %d",
              gpio_get_level(ADC_SYNC_GPIO), gpio_get_level(ADC_DRDY_GPIO), gpio_get_level(ADC_MISO_GPIO));
 
+    /* A converting chip sets the STATUS DRDY bits for unread data and
+     * never returns exact zeros on both channels. */
+    uint16_t drdy_bits = 0;
+    bool ch_nonzero = false, crc_ok = true;
     for (int i = 0; i < 3; i++) {
-        memset(rx, 0, sizeof(rx));
-        if (xfer(tx, rx) == ESP_OK) diag_frame("NULL", rx);
+        crc_ok &= diag_xfer("NULL", tx, rx);
+        drdy_bits |= get_word16(rx) & ADS_ST_DRDY_MASK(2);
+        for (int b = WORD_BYTES; b < 3 * WORD_BYTES; b++) ch_nonzero |= rx[b] != 0;
     }
+    diag_status(get_word16(rx));
 
-    /* A decoded RESET answers 0xFF2x (x = channel count) in the next frame. */
+    uint16_t id = diag_rreg("ID", ADS_REG_ID, 0x2200, 0xFF00);
+    diag_status(diag_rreg("STATUS", ADS_REG_STATUS, 0x0500, 0xFF00));
+    diag_rreg("MODE", ADS_REG_MODE, 0x0510, 0xFFFF);
+    diag_rreg("CLOCK", ADS_REG_CLOCK, 0x030E, 0xFFFF);
+    diag_wreg_test();
+
+    /* A decoded RESET answers 0xFF22 in the next frame. The full 4-word
+     * frame is required: the command latches at its end. 0x0011 means the
+     * command arrived but the frame was cut short; the NULL response
+     * (STATUS) means the command wasn't decoded at all. */
     put_word16(tx, ADS_CMD_RESET);
-    uint16_t r = 0;
-    if (xfer(tx, rx) == ESP_OK) {
-        memset(tx, 0, sizeof(tx));
-        vTaskDelay(pdMS_TO_TICKS(2));
-        if (xfer(tx, rx) == ESP_OK) r = get_word16(rx);
-    }
-    ESP_LOGW(TAG, "diag: RESET command, next response 0x%04X (0xFF22 means it was decoded)", r);
+    diag_xfer("RESET cmd", tx, rx);
     memset(tx, 0, sizeof(tx));
+    vTaskDelay(pdMS_TO_TICKS(2));           /* tREGACQ is 5 us */
+    diag_xfer("RESET ack", tx, rx);
+    uint16_t r = get_word16(rx);
+    ESP_LOGW(TAG, "diag: RESET command, next response 0x%04X (0xFF22 decoded, 0x0011 frame short, 0x05xx not decoded)", r);
 
     /* Open MISO follows the pull; a driven one ignores it. */
     uint16_t up = 0, down = 0;
@@ -203,6 +278,19 @@ void ads_diag(void)
     gpio_pulldown_dis(ADC_MISO_GPIO);
     ESP_LOGW(TAG, "diag: MISO with pull-up 0x%04X, with pull-down 0x%04X (%s)", up, down,
              up == down ? "equal: the chip drives MISO" : "they differ: MISO is floating");
+
+    const bool converting = drdy_bits || ch_nonzero;
+    const bool id_ok = (id & 0xFF00) == 0x2200;
+    if (!crc_ok)
+        ESP_LOGW(TAG, "diag verdict: frame CRC bad: SCLK, CS or MISO problem");
+    else if (!converting && !id_ok && r != 0xFF22)
+        ESP_LOGW(TAG, "diag verdict: SPI shifts, but no conversions and no command decoded: no CLKIN at pin 17 (or a dead core)");
+    else if (converting && !id_ok)
+        ESP_LOGW(TAG, "diag verdict: converting but RREG fails: MOSI/DIN path");
+    else if (id_ok)
+        ESP_LOGW(TAG, "diag verdict: ID 0x%04X read in the diag: chip answers, check the probe sequence", id);
+    else
+        ESP_LOGW(TAG, "diag verdict: mixed result, see the lines above");
 
     s_info.nch = nch;
 }
